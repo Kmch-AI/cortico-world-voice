@@ -1,0 +1,157 @@
+{
+  "tools": [
+    {
+      "name": "voice_speak",
+      "description": "Say a line aloud in your voice through the person's speakers, or only synthesize it when silent is true. Use it when the person asks for voice, when this line needs a specific emotion or voice, or when automatic reading is off. It only makes sound; the visible reply still goes through the channel's own send tool. When the backend supports paralinguistic tags, keep them inline in the text: [Laughter], [Sigh], [Breathing], [Uhm], [Question-ei] and the like are performed, not read out.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "The line to say."
+          },
+          "emotion": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Emotion for this line, for example 开心、温柔、疲惫. Omit to use the standing style."
+          },
+          "instruct": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Natural-language direction for this line, for example \"像在耳边轻声说话，语速偏慢\". Omit to use the standing style."
+          },
+          "voice": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Voice id for this line. Omit to use the configured voice."
+          },
+          "speed": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 2,
+            "description": "Speed multiplier for this line; 1 is normal."
+          },
+          "silent": {
+            "type": "boolean",
+            "description": "true synthesizes without playing on this computer; use it for a line meant for another channel."
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "tags": [
+        "speak"
+      ],
+      "summary": {
+        "zh": "现在念一句;可指定情绪、表演指令、音色与语速,也可以只合成不出声。",
+        "en": "Say one line now, optionally with an emotion, direction, voice and speed, or synthesize it silently."
+      }
+    },
+    {
+      "name": "voice_sing",
+      "description": "Sing a lyric line through the configured singing plugin. It only makes sound; the visible reply still goes through the channel's own send tool. If no singing plugin is configured, or it is not ready, the call fails instead of speaking the lyrics.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "lyrics": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "The lyric line to sing."
+          }
+        },
+        "required": [
+          "lyrics"
+        ]
+      },
+      "tags": [
+        "speak"
+      ],
+      "summary": {
+        "zh": "把一句歌词交给唱歌插件唱出来。",
+        "en": "Sing one lyric line through the configured singing service."
+      }
+    },
+    {
+      "name": "voice_hush",
+      "description": "Stop the voice now: the line playing is cut and queued lines are dropped. It does not affect the visible reply.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "tags": [
+        "speak"
+      ],
+      "summary": {
+        "zh": "立刻停声并清空排队。",
+        "en": "Stop the voice and drop queued lines."
+      }
+    },
+    {
+      "name": "voice_style",
+      "description": "Read or change the standing voice style used by automatic reading. Call with values to change them; call with no arguments to read the current style. Changes are saved to the World configuration and apply to later lines.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "emotion": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Standing emotion; an empty string clears it."
+          },
+          "instruct": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Standing natural-language direction; an empty string clears it."
+          },
+          "voice": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Standing voice id."
+          },
+          "speed": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 2,
+            "description": "Standing speed multiplier."
+          }
+        }
+      },
+      "tags": [
+        "write"
+      ],
+      "summary": {
+        "zh": "读或改自动朗读使用的长期音色与情绪。",
+        "en": "Read or change the standing voice style used by automatic reading."
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "tts.voice",
+      "description": {
+        "zh": "一段语音合成完成,带音频附件;只归档,供播放类插件取用。",
+        "en": "One spoken chunk finished, with its audio attachment; archived only for playback plugins."
+      }
+    },
+    {
+      "type": "voice.failed",
+      "description": {
+        "zh": "合成或播放失败;只归档,供排查。",
+        "en": "Synthesis or playback failed; archived only for diagnosis."
+      }
+    }
+  ],
+  "prompts": [
+    {
+      "key": "worlds.voice.envPrompt",
+      "title": "语音 · 环境提示词",
+      "role": "envPrompt",
+      "content": "语音由 Voice 提供:文字在本机合成并从扬声器念出来。它只负责声音,不负责把回复发到聊天渠道;可见的回复仍走原来的发送工具。\n\n自动朗读现在是 {{voice.auto}}(协议 {{voice.backend}},音色 {{voice.voice}},情绪 {{voice.emotion}},指令 {{voice.instruct}},唱歌服务 {{voice.sing}})。自动朗读开着时,普通回复不必调用任何语音工具;关着时,想出声就调用 voice_speak。\n\n需要出声的时候:\n- 对方明确要语音、要你念出来、要听你的声音时,调用 voice_speak,把要念的正文放进 text。这会绕过概率,必定出声。\n- 这一句需要特定情绪、语气、音色或语速时,调用 voice_speak 并填对应参数;之后想保持这种语气,调用 voice_style 把它变成长期风格。\n- 某一句只想合成、不在本机播放(例如要交给别的渠道发语音条)时,voice_speak 带 silent: true。\n- 想唱一句时调用 voice_sing;唱歌服务没配时会回失败,不要改写成普通朗读。\n- 对方让你安静、停下时调用 voice_hush。\n\n文本规则:\n- text 只放真正要念的正文,不要放动作描写、Markdown、代码、网址或解释。\n- 后端支持副语言标签时,可以在正文里保留 [Laughter]、[Sigh]、[Breathing]、[Uhm]、[Question-ei] 这类标签,它们会被演出来,不会被念出字面;不确定后端是否支持就不要加。\n- 不要把控制标记写进可见的回复正文;语音参数只放在工具调用里。\n"
+    }
+  ]
+}

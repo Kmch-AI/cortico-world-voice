@@ -1,0 +1,50 @@
+{
+  "name": "@kmchai/cortico-world-voice",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cortico World: protocol-agnostic TTS with probabilistic voice replies, emotion and paralinguistic tag control, text filtering, local playback and a local speech API",
+  "license": "MIT",
+  "keywords": [
+    "cortico-world",
+    "cortico",
+    "tts",
+    "voice",
+    "speech",
+    "emotion"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.28.6",
+  "main": "./src/index.ts",
+  "cortico": {
+    "kind": "world",
+    "api": 6,
+    "tags": [
+      "voice",
+      "local",
+      "external-setup",
+      "experimental"
+    ],
+    "describe": "describe.json"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "describe.json"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "smoke:audiocpp": "tsx scripts/smoke-audiocpp.ts",
+    "smoke:player": "tsx scripts/smoke-player.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "cortico": "^0.2.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
