@@ -14,11 +14,12 @@ import type {
   Logger, ToolDef, ToolOutcome, World, WorldHost, WorldLamp, WorldWebUiDecl,
 } from 'cortico/core/types.ts';
 import { nullLogger, nowIso } from 'cortico/core/util.ts';
-import { VOICE_DEFAULTS, VOICE_ID, VOICE_MODELS_KIND, VOICE_OPTIONS_KIND, voiceConfigGroups, voiceText } from './config.ts';
+import { VOICE_DEFAULTS, VOICE_ID, voiceConfigGroups, voiceText } from './config.ts';
 import type { AudioPlayer } from './audio/player.ts';
 import { createPlayer } from './audio/player.ts';
 import { SpeechQueue, type SpeechJob } from './audio/queue.ts';
-import { registerOptions, unregisterOptions } from './options.ts';
+import { modelPrompt } from './models.ts';
+import { isPlainObject, type PanelModelState } from './panel.ts';
 import { ServiceClient, type SpeechService } from './service.ts';
 import { splitSpeech, truncateSpeech } from './speech/chunk.ts';
 import { buildInstruct, resolveStyle } from './speech/style.ts';
@@ -26,14 +27,13 @@ import { filterSpeech } from './speech/text.ts';
 import { EventPoller, eventTypes, hasKeyword, latestUserText, splitList, VoiceTap } from './triggers.ts';
 import { VOICE_TOOL_DECLS } from './tools.ts';
 import type {
-  ModelOption, ServiceHealth, TtsAudio, TtsRequest, VoiceConfigSection, VoiceOption,
+  ServiceHealth, TtsAudio, TtsRequest, VoiceConfigSection, VoiceModel,
 } from './types.ts';
 
 const ENV_PROMPT_FILE = fileURLToPath(new URL('./ENV_PROMPT.md', import.meta.url));
 const DEDUPE_WINDOW_MS = 5000;
 const HEALTH_INTERVAL_MS = 15_000;
 const HEALTH_TTL_MS = 15_000;
-const CATALOG_TTL_MS = 10 * 60_000;
 
 export interface VoiceWorldDeps {
   fetch: typeof fetch;
@@ -130,18 +130,11 @@ export class VoiceWorld implements World {
   private tempSeq = 0;
   private serviceState: ServiceState | null = null;
   private probing = false;
-  private voices: VoiceOption[] = [];
-  private voicesAt = 0;
-  private voicesSignature = '';
-  private voicesLoading = false;
-  private models: ModelOption[] = [];
-  private modelsAt = 0;
-  private modelsSignature = '';
-  private modelsLoading = false;
+  private catalog: VoiceModel[] | null = null;
+  private catalogError: string | undefined;
+  private catalogLoad: Promise<void> | null = null;
   private readonly lastSpoken = new Map<string, number>();
   private lastFailureAt = 0;
-  private readonly modelOptions = (): readonly ModelOption[] => this.models;
-  private readonly voiceOptions = (): readonly VoiceOption[] => this.voices;
 
   constructor(private readonly opts: VoiceWorldOptions) {
     this.log = opts.log ?? nullLogger();
@@ -180,6 +173,7 @@ export class VoiceWorld implements World {
       'voice.voice': cfg.voice || 'default',
       'voice.emotion': cfg.defaultEmotion || 'neutral',
       'voice.instruct': cfg.defaultInstruct || 'none',
+      'voice.modelPrompt': modelPrompt(cfg.model),
     };
   }
 
@@ -224,8 +218,22 @@ export class VoiceWorld implements World {
         { label: 'model', value: cfg.model || '—', tone: 'plain' },
         { label: 'voice', value: cfg.voice || '—', tone: 'plain' },
       ],
+      panels: [{ id: 'model', title: t.modelPanel, getMethods: ['state'] }],
       config: voiceConfigGroups(language),
       links: [{ label: t.servicePage, href: '#/provider/world:service' }],
+      invoke: async (panel, method, args) => {
+        if (panel !== 'model') throw new Error(t.modelUnknownMethod);
+        switch (method) {
+          case 'state':
+            return this.modelPanelState();
+          case 'refresh':
+            return this.refreshModelPanel();
+          case 'save':
+            return this.saveModelPanel(language, args);
+          default:
+            throw new Error(t.modelUnknownMethod);
+        }
+      },
       promptDocs: [{
         key: 'worlds.voice.envPrompt',
         title: t.envTitle,
@@ -237,9 +245,109 @@ export class VoiceWorld implements World {
           { name: 'voice.voice', description: 'Current voice id.' },
           { name: 'voice.emotion', description: 'Standing emotion.' },
           { name: 'voice.instruct', description: 'Standing direction.' },
+          { name: 'voice.modelPrompt', description: 'How to write text and emotion for the current model.' },
         ],
       }],
     };
+  }
+
+  // ———————— 模型面板 ————————
+
+  /**
+   * 第一次读面板时拉一次目录;之后直接回缓存。刷新失败保留上一次可用的目录,
+   * 只把错误一起交回面板。
+   */
+  private async modelPanelState(): Promise<PanelModelState> {
+    if (!this.catalog) await this.loadCatalog(this.cfg.model);
+    return this.panelSnapshot();
+  }
+
+  private async refreshModelPanel(): Promise<PanelModelState> {
+    if (this.catalogLoad) await this.catalogLoad;
+    await this.loadCatalog(this.cfg.model);
+    return this.panelSnapshot();
+  }
+
+  private panelSnapshot(): PanelModelState {
+    const cfg = this.cfg;
+    const saved = cfg.modelOptions?.[cfg.model];
+    return {
+      model: cfg.model,
+      voice: cfg.voice,
+      prompt: modelPrompt(cfg.model),
+      options: isPlainObject(saved) ? { ...saved } : {},
+      models: this.catalog ?? [],
+      ...(this.catalogError ? { error: this.catalogError } : {}),
+    };
+  }
+
+  private loadCatalog(selected: string): Promise<void> {
+    if (this.catalogLoad) return this.catalogLoad;
+    this.catalogLoad = this.fetchCatalog(selected).finally(() => {
+      this.catalogLoad = null;
+    });
+    return this.catalogLoad;
+  }
+
+  /**
+   * 先取模型表,再尽力为当前模型补一次更细的音色表。模型表是权威来源,已经带
+   * 音色与参数;补音色失败只损失一次补全,不能让整份目录跟着作废。
+   */
+  private async fetchCatalog(selected: string): Promise<void> {
+    let models: VoiceModel[];
+    try {
+      models = await this.service.models();
+    } catch (error) {
+      this.catalogError = this.catalogFailure(error);
+      this.markService({ ok: false, detail: this.catalogError });
+      return;
+    }
+
+    const id = selected.trim() || this.cfg.model.trim() || models[0]?.id || '';
+    let catalog = models;
+    if (id) {
+      try {
+        const voices = await this.service.voices(id);
+        const names = [...new Set(voices.map((voice) => voice.value.trim()).filter(Boolean))];
+        if (names.length > 0) {
+          catalog = models.map((model) => (model.id === id ? { ...model, voices: names } : model));
+        }
+      } catch (error) {
+        this.log.debug('音色表读取失败,保留模型表里的音色', {
+          err: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    this.catalog = catalog;
+    this.catalogError = undefined;
+    this.markService({ ok: true });
+  }
+
+  /** 错误要回面板,但不能把配置里的服务地址(可能带令牌)一起带出去。 */
+  private catalogFailure(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    const url = this.cfg.serviceUrl.trim();
+    return url && message.includes(url) ? message.split(url).join('[service]') : message;
+  }
+
+  private saveModelPanel(language: Language, args: unknown[]): PanelModelState {
+    const t = voiceText(language);
+    const raw = args[0];
+    if (!isPlainObject(raw)) throw new Error(t.modelSaveShape);
+    const model = typeof raw.model === 'string' ? raw.model.trim() : '';
+    if (!model) throw new Error(t.modelSaveModel);
+    if (typeof raw.voice !== 'string') throw new Error(t.modelSaveVoice);
+    if (!isPlainObject(raw.options)) throw new Error(t.modelSaveOptions);
+
+    const next: VoiceConfigSection['modelOptions'] = { ...(this.cfg.modelOptions ?? {}) };
+    // 空对象表示删掉这个模型的条目,回到服务的默认参数。
+    if (Object.keys(raw.options).length === 0) delete next[model];
+    else next[model] = { ...raw.options };
+    // 配置层对对象做深合并,删掉的键不会随 patch 传播;先让活引用指向新对象再写盘。
+    this.cfg.modelOptions = next;
+    this.opts.persist({ model, voice: raw.voice.trim(), modelOptions: next });
+    return this.panelSnapshot();
   }
 
   outputTap() {
@@ -252,7 +360,6 @@ export class VoiceWorld implements World {
   async start(host: WorldHost): Promise<void> {
     this.host = host;
     this.started = true;
-    this.registerCatalogOptions();
     this.log.info('语音 World 启动', {
       service: serviceHost(this.cfg.serviceUrl),
       playback: this.cfg.playback,
@@ -271,7 +378,6 @@ export class VoiceWorld implements World {
 
   async stop(): Promise<void> {
     this.started = false;
-    this.unregisterCatalogOptions();
     if (this.healthTimer) clearInterval(this.healthTimer);
     this.healthTimer = null;
     this.poller?.stop();
@@ -404,7 +510,6 @@ export class VoiceWorld implements World {
     }
     if (Object.keys(patch).length > 0) {
       this.opts.persist(patch);
-      if (patch.voice !== undefined) void this.refreshVoices(true);
       return { text: `Voice style updated. ${this.styleSummary()}` };
     }
     return { text: this.styleSummary() };
@@ -527,7 +632,7 @@ export class VoiceWorld implements World {
     } catch { /* 只归档,失败就只留日志 */ }
   }
 
-  // ———————— 状态与目录 ————————
+  // ———————— 状态 ————————
 
   private markService(state: Pick<ServiceState, 'ok' | 'detail'>): void {
     const previous = this.serviceState;
@@ -540,8 +645,6 @@ export class VoiceWorld implements World {
 
   private async probe(): Promise<void> {
     if (this.probing) return;
-    // 探活会刷新目录;每次探活都重新登记,停用后重新启用的实例也能接上。
-    this.registerCatalogOptions();
     this.probing = true;
     try {
       const health: ServiceHealth = await this.service.health();
@@ -554,9 +657,6 @@ export class VoiceWorld implements World {
     } finally {
       this.probing = false;
     }
-    // 探活顺带刷新目录;读不到时 refresh 会保留上一次的表。
-    await this.refreshVoices(true);
-    await this.refreshModels(true);
   }
 
   private maybeRefresh(): void {
@@ -565,56 +665,6 @@ export class VoiceWorld implements World {
     if (!this.probing && (this.serviceState === null || now - this.serviceState.at > HEALTH_TTL_MS)) {
       void this.probe();
     }
-    if (now - this.voicesAt > CATALOG_TTL_MS) void this.refreshVoices();
-    if (now - this.modelsAt > CATALOG_TTL_MS) void this.refreshModels();
-  }
-
-  private async refreshVoices(force = false): Promise<void> {
-    const cfg = this.cfg;
-    const signature = `${cfg.serviceUrl.trim()}|${cfg.model.trim()}`;
-    if (this.voicesLoading && !force) return;
-    if (!force && signature === this.voicesSignature && this.deps.now() - this.voicesAt < CATALOG_TTL_MS) return;
-    this.voicesLoading = true;
-    try {
-      const list = await this.service.voices(cfg.model);
-      if (signature !== `${this.cfg.serviceUrl.trim()}|${this.cfg.model.trim()}`) return;
-      this.voices = list;
-      this.voicesSignature = signature;
-      this.voicesAt = this.deps.now();
-    } catch (error) {
-      this.log.debug('音色表读取失败', { err: error instanceof Error ? error.message : String(error) });
-    } finally {
-      this.voicesLoading = false;
-    }
-  }
-
-  private async refreshModels(force = false): Promise<void> {
-    const signature = this.cfg.serviceUrl.trim();
-    if (this.modelsLoading && !force) return;
-    if (!force && signature === this.modelsSignature && this.deps.now() - this.modelsAt < CATALOG_TTL_MS) return;
-    this.modelsLoading = true;
-    try {
-      const list = await this.service.models();
-      if (signature !== this.cfg.serviceUrl.trim()) return;
-      this.models = list;
-      this.modelsSignature = signature;
-      this.modelsAt = this.deps.now();
-    } catch (error) {
-      this.log.debug('模型表读取失败', { err: error instanceof Error ? error.message : String(error) });
-    } finally {
-      this.modelsLoading = false;
-    }
-  }
-
-  /** 下拉读的是缓存表;服务读不到时保留上一次的结果。当前值由框架补入。 */
-  private registerCatalogOptions(): void {
-    registerOptions(VOICE_MODELS_KIND, this.modelOptions);
-    registerOptions(VOICE_OPTIONS_KIND, this.voiceOptions);
-  }
-
-  private unregisterCatalogOptions(): void {
-    unregisterOptions(VOICE_MODELS_KIND, this.modelOptions);
-    unregisterOptions(VOICE_OPTIONS_KIND, this.voiceOptions);
   }
 
   private syncPoller(): void {
@@ -655,4 +705,4 @@ export class VoiceWorld implements World {
   }
 }
 
-export { VOICE_DEFAULTS, VOICE_ID, VOICE_MODELS_KIND, VOICE_OPTIONS_KIND };
+export { VOICE_DEFAULTS, VOICE_ID };

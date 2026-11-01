@@ -45,6 +45,10 @@ corepack pnpm add "D:/path/to/cortico-world-voice" --ignore-workspace
 
 `serviceUrl` 默认为 `http://127.0.0.1:9883`。`serviceTokenSecret` 填部署 `.env` 里的变量名,值只在请求时读取;服务监听非回环地址时必须配令牌。后端条目、模型 profile 与上游密钥都配在服务 World 里,见[服务包 README](https://github.com/Kmch-AI/cortico-world-service#readme)。
 
+## 模型面板
+
+World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回的参数元数据渲染字段。保存写进 `worlds.voice.modelOptions[model]`,合成时作为 `options` 发给服务;空参数表删掉该模型的条目。模型专属的文本与情绪写法显示在同页的「模型提示词」折叠区。系统 Config tab 只留服务地址、风格、触发、过滤与输出。
+
 ## 工具
 
 | 工具 | 作用 |
@@ -95,7 +99,7 @@ OpenAI 兼容条目把 `instructions` / `emotion` / `speed` 直接放进请求�
 - 情绪来源:工具参数 > 正文里的 `[emotion:开心]` 标记 > `defaultEmotion`。
 - `voice_style` 读写长期风格(情绪、指令、音色、语速),写回 `worlds.voice`。
 - 副语言标签:`[Breathing] [Cough] [Sigh] [Laughter] [Surprise-ah] [Surprise-oh] [Dissatisfaction-hnn] [Uhm] [Confirmation-en] [Question-ei] [Question-ah] [Question-en] [Question-oh] [Question-huh]`。
-  `paralinguistic: auto` 保留标签,由服务里的模型决定演不演;`keep` 一律保留,`strip` 一律删除。表外 `[...]` 会从朗读文本里剥掉,防止被念出来。
+  `paralinguistic: auto` 只在当前模型支持标签(Ming 3.0 系)时保留,IndexTTS2 与通用模型剥掉;`keep` 一律保留,`strip` 一律删除。表外 `[...]` 会从朗读文本里剥掉,防止被念出来。
 
 ## 文本过滤
 
@@ -121,8 +125,8 @@ OpenAI 兼容条目把 `instructions` / `emotion` / `speed` 直接放进请求�
 |---|---|
 | `POST /v1/audio/speech` | 合成音频;体 `{model?, input, voice?, response_format, speed?, instructions?, emotion?}`。 |
 | `GET /health` | 探活;World 页的服务灯每 15 秒刷新。 |
-| `GET /v1/models` | 模型下拉。 |
-| `GET /v1/audio/voices?model=` | 音色下拉。 |
+| `GET /v1/models` | 模型、音色与请求参数元数据。 |
+| `GET /v1/audio/voices?model=` | 当前模型的音色表。 |
 
 服务不可达时:模型与音色下拉保留上一次读到的表,服务灯变红,`voice_speak` 回失败。语音 0.2.0 不保留直连后端的回退路径。服务不重试上游,语音也不重试。
 
@@ -149,7 +153,7 @@ pnpm smoke:player out.wav                 # 本机播放器,音量 0
 pnpm smoke:chain http://127.0.0.1:9883    # 触发→过滤→经服务合成→tts.voice 全链路
 ```
 
-装进 Cortico 后应看到:World 页多一张「Kmch AI · 语音」卡,服务灯、队列灯与 `service` / `model` / `voice` 徽标;服务在线时灯亮;让 bot 调 `voice_speak` 能听见;说「念给我听」会绕过概率;`playback: event` 时时间线出现 `tts.voice`。
+装进 Cortico 后应看到:World 页多一张「Kmch AI · 语音」卡,服务灯、队列灯与 `service` / `model` / `voice` 徽标;「模型」tab 能选模型与音色、按服务参数渲染字段并保存;服务在线时灯亮;让 bot 调 `voice_speak` 能听见;说「念给我听」会绕过概率;`playback: event` 时时间线出现 `tts.voice`。
 
 ## 许可
 

@@ -1,4 +1,5 @@
 /** 把一段回复变成能念的正文:取 `<tts>`、去代码/网址/Markdown/动作标记/符号。 */
+import { modelSupportsTags } from '../models.ts';
 import type { VoiceConfigSection } from '../types.ts';
 import {
   canonicalizeTags,
@@ -86,7 +87,9 @@ export function filterSpeech(raw: string, cfg: VoiceConfigSection): FilteredSpee
 
   text = canonicalizeTags(text);
   text = stripUnknownTags(text);
-  if (!keepsParalinguistic(cfg.paralinguistic)) text = stripParalinguisticTags(text);
+  if (!keepsParalinguistic(cfg.paralinguistic, modelSupportsTags(cfg.model))) {
+    text = stripParalinguisticTags(text);
+  }
 
   if (cfg.filterEmoji) text = text.replace(EMOJI_RE, '').replace(SYMBOL_RE, '');
 

@@ -5,8 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { EventEnvelope, ToolCallContext } from 'cortico/core/types.ts';
 import { dryMountWorld } from 'cortico/extensions/dry-mount.ts';
 import type { StreamEvent } from 'cortico/protocol/open-responses/index.ts';
-import { VOICE_MODELS_KIND, VOICE_OPTIONS_KIND } from '../src/config.ts';
+import { VOICE_DEFAULTS, VOICE_LABEL, voiceText } from '../src/config.ts';
 import { VOICE } from '../src/definition.ts';
+import { modelPrompt } from '../src/models.ts';
 import { FakeHost } from './helpers/fake-host.ts';
 import { fakeService, settle, testWorld, type TestWorldHandle } from './helpers/voice.ts';
 
@@ -110,11 +111,29 @@ describe('Voice World', () => {
     }
   });
 
+  it('World 定义、WebUI 与配置文案用同一个显示名', async () => {
+    expect(VOICE.label).toBe('Kmch AI · 语音');
+    expect(voiceText('zh').label).toBe('Kmch AI · 语音');
+    expect(voiceText('en').label).toBe('Kmch AI · 语音');
+    const h = make();
+    await started(h);
+    expect(h.world.webUi('zh').label).toBe('Kmch AI · 语音');
+    expect(h.world.webUi('en').label).toBe('Kmch AI · 语音');
+    expect(VOICE_LABEL).toBe('Kmch AI · 语音');
+  });
+
+  it('每次 defaults() 都给出独立的 modelOptions 对象', () => {
+    const first = VOICE.defaults();
+    const second = VOICE.defaults();
+    expect(first.modelOptions).toEqual({});
+    expect(first.modelOptions).not.toBe(second.modelOptions);
+    expect(first.modelOptions).not.toBe(VOICE_DEFAULTS.modelOptions);
+  });
+
   it('webUi 的服务灯在探活成功后变 online,失败时变 error', async () => {
     const ok = make();
     await started(ok);
     const okUi = ok.world.webUi('zh');
-    expect(okUi.label).toBe('语音');
     expect(okUi.lamps?.[0]?.state).toBe('online');
     expect(okUi.config?.length).toBe(5);
 
@@ -140,32 +159,35 @@ describe('Voice World', () => {
     expect(ui.links).toContainEqual({ label: '服务设置', href: '#/provider/world:service' });
   });
 
-  it('音色与模型下拉从服务目录刷新', async () => {
-    const h = make();
-    await started(h);
-    expect(VOICE.configOptions?.(VOICE_OPTIONS_KIND, 'zh')).toEqual([{ value: '4016', label: '4016' }]);
-    expect(VOICE.configOptions?.(VOICE_MODELS_KIND, 'zh')).toEqual([{ value: 'ming3-tts', label: 'ming3-tts' }]);
-  });
-
-  it('下拉不合并当前值,未知 kind 为空', async () => {
+  it('连接组不再重复模型与音色,也不再提供 x-options 目录', async () => {
     const h = make({ model: 'manual-model', voice: 'manual-voice' });
     await started(h);
-    expect(VOICE.configOptions?.(VOICE_OPTIONS_KIND, 'zh')).toEqual([{ value: '4016', label: '4016' }]);
-    expect(VOICE.configOptions?.(VOICE_MODELS_KIND, 'zh')).toEqual([{ value: 'ming3-tts', label: 'ming3-tts' }]);
-    expect(VOICE.configOptions?.('voice.unknown', 'zh')).toEqual([]);
+    const ui = h.world.webUi('zh');
+    const connection = ui.config?.find((group) => group.id === 'world:voice-connection');
+    expect(Object.keys(connection?.schema.properties ?? {})).toEqual([
+      'worlds.voice.serviceUrl',
+      'worlds.voice.serviceTokenSecret',
+      'worlds.voice.format',
+      'worlds.voice.timeoutMs',
+    ]);
+    expect(VOICE.configOptions).toBeUndefined();
   });
 
-  it('服务读不到目录时下拉为空;停止后也清空', async () => {
-    const down = fakeService({
-      voices: async () => { throw new Error('down'); },
-      models: async () => { throw new Error('down'); },
-    });
-    const h = make({}, { service: down });
-    await started(h);
-    expect(VOICE.configOptions?.(VOICE_OPTIONS_KIND, 'zh')).toEqual([]);
-    expect(VOICE.configOptions?.(VOICE_MODELS_KIND, 'zh')).toEqual([]);
-    await h.world.stop();
-    expect(VOICE.configOptions?.(VOICE_OPTIONS_KIND, 'zh')).toEqual([]);
+  it('环境提示词变量带当前模型的写法', async () => {
+    const ming = make({ model: 'ming3-tts' });
+    await started(ming);
+    expect(ming.world.envPromptVars()['voice.modelPrompt']).toBe(modelPrompt('ming3-tts'));
+    expect(ming.world.envPromptVars()['voice.modelPrompt']).toContain('[Laughter]');
+
+    const index = make({ model: 'index-tts2' });
+    await started(index);
+    expect(index.world.envPromptVars()['voice.modelPrompt']).toBe(modelPrompt('index-tts2'));
+    expect(index.world.envPromptVars()['voice.modelPrompt']).toContain('emotion_text');
+
+    const generic = make();
+    await started(generic);
+    expect(generic.world.envPromptVars()['voice.modelPrompt']).toBe(modelPrompt(''));
+    expect(generic.world.envPromptVars()['voice.modelPrompt']).toContain('instructions');
   });
 
   it('voice_style 读与写', async () => {

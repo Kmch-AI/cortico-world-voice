@@ -1,0 +1,19 @@
+{
+  // 浏览器端面板:带 DOM 类型。类型检查会链到 src/panel.ts 与 src/types.ts,它们都是纯声明。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
+  },
+  "include": ["webui/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

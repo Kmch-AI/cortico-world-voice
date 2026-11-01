@@ -1,6 +1,6 @@
 {
   "name": "@kmchai/cortico-world-voice",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Cortico World: voice tools, probabilistic reading, emotion and paralinguistic tags, text filtering and local playback; speech is synthesized by the Kmch AI service over HTTP",
   "author": "kmchai",
@@ -49,23 +49,29 @@
       "requires-extension",
       "experimental"
     ],
-    "describe": "describe.json"
+    "describe": "describe.json",
+    "webUiClient": "dist/webui.js",
+    "webUiStyle": "dist/webui.css"
   },
   "files": [
     "src",
+    "dist/webui.js",
+    "dist/webui.css",
     "README.md",
     "CHANGELOG.md",
     "describe.json"
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webui.json",
+    "build:webui": "node scripts/build-webui.mjs",
     "smoke:player": "tsx scripts/smoke-player.ts",
     "smoke:chain": "tsx scripts/smoke-chain.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "cortico": "^0.2.12",
+    "esbuild": "^0.28.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

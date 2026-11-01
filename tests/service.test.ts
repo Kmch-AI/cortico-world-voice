@@ -82,6 +82,39 @@ describe('ServiceClient.synthesize', () => {
     expect(audio.seconds).toBeCloseTo(1, 5);
   });
 
+  it('只带当前模型的 options,其他模型的参数不混入', async () => {
+    const { fetch, calls } = fakeFetch(() => audioResponse());
+    const { client } = makeClient({
+      model: 'index-tts2',
+      modelOptions: {
+        'index-tts2': { emotion_alpha: 1.2, temperature: 0.7 },
+        'ming3-tts': { template_name: 'freeform' },
+      },
+    }, fetch);
+
+    await client.synthesize({ text: '你好', format: 'wav' });
+    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({
+      input: '你好',
+      response_format: 'wav',
+      model: 'index-tts2',
+      options: { emotion_alpha: 1.2, temperature: 0.7 },
+    });
+  });
+
+  it('当前模型没有参数或参数为空时不发 options', async () => {
+    const cases: Array<Record<string, Record<string, unknown>>> = [
+      {},
+      { 'ming3-tts': { template_name: 'freeform' } },
+      { 'index-tts2': {} },
+    ];
+    for (const modelOptions of cases) {
+      const { fetch, calls } = fakeFetch(() => audioResponse());
+      const { client } = makeClient({ model: 'index-tts2', modelOptions }, fetch);
+      await client.synthesize({ text: '你好', format: 'wav' });
+      expect(JSON.parse(String(calls[0]?.init.body)).options).toBeUndefined();
+    }
+  });
+
   it('没有配置令牌时不发 Authorization', async () => {
     const { fetch, calls } = fakeFetch(() => audioResponse());
     const { client } = makeClient({}, fetch);
@@ -170,18 +203,45 @@ describe('ServiceClient 目录与健康', () => {
     expect(health.detail).toContain('ECONNREFUSED');
   });
 
-  it('models 读 OpenAI 形状的列表', async () => {
+  it('models 读 OpenAI 形状的列表,带音色与参数元数据', async () => {
     const { fetch, calls } = fakeFetch(() => jsonResponse({
       object: 'list',
       data: [
-        { id: 'ming3-tts', object: 'model', owned_by: 'service', display_name: 'Ming 3.0' },
+        {
+          id: 'ming3-tts',
+          object: 'model',
+          owned_by: 'service',
+          display_name: 'Ming 3.0',
+          voices: ['4016', { value: '4017' }],
+          parameters: [
+            {
+              name: 'template_name', type: 'enum', description: 'Template.',
+              values: ['tts', 'basic'], default: 'tts',
+            },
+            { name: 'seed', type: 'int', min: 0, max: 4294967295 },
+            { name: 'broken', type: 'mystery' },
+          ],
+        },
         { id: 'qwen-tts', object: 'model', owned_by: 'service' },
+        { object: 'model' },
+        'not-a-model',
       ],
     }));
     const { client } = makeClient({ serviceUrl: 'http://127.0.0.1:9883/v1/' }, fetch);
     expect(await client.models()).toEqual([
-      { value: 'ming3-tts', label: 'Ming 3.0' },
-      { value: 'qwen-tts', label: 'qwen-tts' },
+      {
+        id: 'ming3-tts',
+        label: 'Ming 3.0',
+        voices: ['4016', '4017'],
+        parameters: [
+          {
+            name: 'template_name', type: 'enum', description: 'Template.',
+            values: ['tts', 'basic'], default: 'tts',
+          },
+          { name: 'seed', type: 'int', min: 0, max: 4294967295 },
+        ],
+      },
+      { id: 'qwen-tts', voices: [] },
     ]);
     expect(calls[0]?.url).toBe('http://127.0.0.1:9883/v1/models');
   });

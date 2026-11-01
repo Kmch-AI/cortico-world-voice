@@ -57,10 +57,15 @@ export function stripUnknownTags(text: string): string {
 }
 
 /**
- * auto 保留标签,由服务里的模型决定演不演;keep 一律保留;strip 一律删掉。
+ * auto 只在当前模型支持标签时保留;keep 一律保留;strip 一律删掉。
  */
-export function keepsParalinguistic(mode: 'auto' | 'keep' | 'strip'): boolean {
-  return mode !== 'strip';
+export function keepsParalinguistic(
+  mode: 'auto' | 'keep' | 'strip',
+  tagsSupported: boolean,
+): boolean {
+  if (mode === 'strip') return false;
+  if (mode === 'keep') return true;
+  return tagsSupported;
 }
 
 const EMOTION_MARKERS: ReadonlyArray<RegExp> = [

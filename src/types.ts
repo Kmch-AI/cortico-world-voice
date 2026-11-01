@@ -18,6 +18,8 @@ export interface VoiceConfigSection {
   serviceTokenSecret: string;
   model: string;
   voice: string;
+  /** 模型专属的 request 参数,按模型 id 分组;由「模型」面板写回,不进 ConfigGroup。 */
+  modelOptions: Record<string, Record<string, unknown>>;
   format: AudioFormat;
   timeoutMs: number;
 
@@ -90,7 +92,36 @@ export interface SelectOption {
 }
 
 export type VoiceOption = SelectOption;
-export type ModelOption = SelectOption;
+
+/** 服务 `GET /v1/models` 里 `parameters[].type` 的取值。 */
+export type ModelParameterType =
+  | 'string'
+  | 'enum'
+  | 'bool'
+  | 'int'
+  | 'float'
+  | 'string_list'
+  | 'path'
+  | 'path_list';
+
+/** 模型请求参数的元数据;服务按模型给出,面板据此渲染字段。 */
+export interface ModelParameter {
+  name: string;
+  type: ModelParameterType;
+  description?: string;
+  values?: string[];
+  default?: unknown;
+  min?: number;
+  max?: number;
+}
+
+/** 服务目录里的一项模型;音色与请求参数元数据随模型走。 */
+export interface VoiceModel {
+  id: string;
+  label?: string;
+  voices: string[];
+  parameters?: ModelParameter[];
+}
 
 /** `GET /health` 的摘要;`ok` 只表示网关有回应,`ready` 表示至少有一个服务能合成。 */
 export interface ServiceHealth {

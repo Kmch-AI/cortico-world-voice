@@ -28,14 +28,23 @@ describe('filterSpeech', () => {
     expect(out.emotion).toBe('害羞');
   });
 
-  it('paralinguistic=auto 保留标签并归一大小写,表外标签删掉', () => {
-    const out = filterSpeech('[laughter]你好[happy]', cfg({ paralinguistic: 'auto' }));
+  it('paralinguistic=auto 在支持标签的模型上保留并归一大小写,表外标签删掉', () => {
+    const out = filterSpeech('[laughter]你好[happy]', cfg({ model: 'ming3-tts', paralinguistic: 'auto' }));
     expect(out.text).toBe('[Laughter]你好');
     expect(tagsIn(out.text)).toEqual(['Laughter']);
   });
 
+  it('paralinguistic=auto 在当前模型不支持标签时剥掉', () => {
+    for (const model of ['', 'index-tts2', 'openai-tts', 'qwen-tts']) {
+      const out = filterSpeech('[Laughter]你好[Sigh]', cfg({ model, paralinguistic: 'auto' }));
+      expect(out.text, model).toBe('你好');
+    }
+    expect(filterSpeech('[Laughter]你好', cfg({ model: 'index-tts2', paralinguistic: 'keep' })).text)
+      .toBe('[Laughter]你好');
+  });
+
   it('paralinguistic=strip 删掉副语言标签', () => {
-    const out = filterSpeech('[Laughter]你好', cfg({ paralinguistic: 'strip' }));
+    const out = filterSpeech('[Laughter]你好', cfg({ model: 'ming3-tts', paralinguistic: 'strip' }));
     expect(out.text).toBe('你好');
   });
 
@@ -63,10 +72,11 @@ describe('tags', () => {
     expect(takeEmotionMarker('[emotion:开心]甲[emotion:悲伤]乙')).toEqual({ text: ' 甲 乙', emotion: '开心' });
   });
 
-  it('标签保留策略:auto/keep 保留,strip 删除', () => {
-    expect(keepsParalinguistic('auto')).toBe(true);
-    expect(keepsParalinguistic('keep')).toBe(true);
-    expect(keepsParalinguistic('strip')).toBe(false);
+  it('标签保留策略:auto 看模型能力,keep 保留,strip 删除', () => {
+    expect(keepsParalinguistic('auto', true)).toBe(true);
+    expect(keepsParalinguistic('auto', false)).toBe(false);
+    expect(keepsParalinguistic('keep', false)).toBe(true);
+    expect(keepsParalinguistic('strip', true)).toBe(false);
   });
 });
 

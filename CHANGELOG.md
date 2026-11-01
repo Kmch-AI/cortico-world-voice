@@ -1,3 +1,11 @@
+## 0.2.1
+
+- 新增 World 页的「模型」面板:模型与音色在面板里选,不再占系统 Config tab 的字段。
+- 按服务 `/v1/models` 返回的参数元数据渲染字段:开关、枚举、数字与文本;IndexTTS2 的参数带中文名。
+- 模型专属参数存进 `worlds.voice.modelOptions[model]`,请求时作为 `options` 发给服务;空对象删掉该模型的条目。
+- 面板显示当前模型的提示词片段;目录缓存在进程内,服务不可达时保留上一次结果并报错。
+- 新增 `scripts/build-webui.mjs`(esbuild)与 `dist/webui.js` / `dist/webui.css`。
+
 ## 0.2.0
 
 分层:协议、进程托管与 HTTP 网关移到 `@kmchai/cortico-world-service`;语音只保留工具、概率朗读、文本过滤、情绪与标签语义、队列和本机播放,经 HTTP 调服务。

@@ -4,10 +4,8 @@ import { pick, type Language, type LanguageTable } from 'cortico/core/language.t
 import type { VoiceConfigSection } from './types.ts';
 
 export const VOICE_ID = 'voice';
-/** 配置里 `x-options` 用的动态音色表。 */
-export const VOICE_OPTIONS_KIND = 'voice.voices';
-/** 配置里 `x-options` 用的动态模型表。 */
-export const VOICE_MODELS_KIND = 'voice.models';
+/** World 定义、WebUI 与配置页共用同一个显示名。 */
+export const VOICE_LABEL = 'Kmch AI · 语音';
 
 export const VOICE_DEFAULTS: VoiceConfigSection = {
   enabled: false,
@@ -16,6 +14,7 @@ export const VOICE_DEFAULTS: VoiceConfigSection = {
   serviceTokenSecret: '',
   model: '',
   voice: '',
+  modelOptions: {},
   format: 'wav',
   timeoutMs: 180_000,
 
@@ -52,19 +51,23 @@ export const VOICE_DEFAULTS: VoiceConfigSection = {
 
 const TEXT = {
   zh: {
-    label: '语音',
+    label: 'Kmch AI · 语音',
     envTitle: '语音 · 环境提示词',
     lampService: '语音服务',
     lampQueue: '朗读队列',
     servicePage: '服务设置',
+    modelPanel: '模型',
+    modelSaveShape: '保存失败:参数格式不对。',
+    modelSaveModel: '保存失败:模型 id 不能为空。',
+    modelSaveVoice: '保存失败:音色必须是字符串。',
+    modelSaveOptions: '保存失败:模型参数必须是对象。',
+    modelUnknownMethod: '未知的面板方法。',
     connection: '连接',
     connectionDesc: '语音服务的 HTTP 地址与令牌。',
     serviceUrl: '服务地址',
     serviceUrlDesc: 'Kmch AI · 服务 的网关地址。',
     serviceTokenSecret: '服务令牌变量名',
     serviceTokenSecretDesc: '部署 .env 里的变量名,留空表示服务不校验。',
-    model: '模型',
-    voice: '音色',
     format: '音频格式',
     timeoutMs: '超时(毫秒)',
     style: '音色与情绪',
@@ -75,7 +78,7 @@ const TEXT = {
     defaultInstruct: '默认表演指令',
     speed: '语速',
     paralinguistic: '副语言标签',
-    paralinguisticDesc: 'auto 保留,由服务与模型决定;strip 一律从朗读文本里删掉。',
+    paralinguisticDesc: 'auto 只在当前模型支持标签时保留;keep 一律保留;strip 一律从朗读文本里删掉。',
     triggers: '触发',
     triggersDesc: '',
     autoSpeak: '自动朗读',
@@ -111,19 +114,23 @@ const TEXT = {
     shareAudio: '回执带音频附件',
   },
   en: {
-    label: 'Voice',
+    label: 'Kmch AI · 语音',
     envTitle: 'Voice · environment prompt',
     lampService: 'Speech service',
     lampQueue: 'Speech queue',
     servicePage: 'Service settings',
+    modelPanel: '模型',
+    modelSaveShape: 'Save failed: invalid arguments.',
+    modelSaveModel: 'Save failed: the model id must not be empty.',
+    modelSaveVoice: 'Save failed: voice must be a string.',
+    modelSaveOptions: 'Save failed: model options must be an object.',
+    modelUnknownMethod: 'Unknown panel method.',
     connection: 'Connection',
     connectionDesc: 'Where the speech service is and which token it expects.',
     serviceUrl: 'Service URL',
     serviceUrlDesc: 'Gateway address of Kmch AI · Service.',
     serviceTokenSecret: 'Service token variable',
     serviceTokenSecretDesc: 'Name in the deployment .env; empty means the service does not check.',
-    model: 'Model',
-    voice: 'Voice',
     format: 'Audio format',
     timeoutMs: 'Timeout (ms)',
     style: 'Voice and emotion',
@@ -134,7 +141,7 @@ const TEXT = {
     defaultInstruct: 'Default direction',
     speed: 'Speed',
     paralinguistic: 'Paralinguistic tags',
-    paralinguisticDesc: 'auto keeps them and lets the service and model decide; strip removes them from the spoken text.',
+    paralinguisticDesc: 'auto keeps them only when the current model supports them; keep always keeps; strip removes them from the spoken text.',
     triggers: 'Triggers',
     triggersDesc: '',
     autoSpeak: 'Automatic speech',
@@ -192,8 +199,6 @@ export function voiceConfigGroups(language: Language): ConfigGroup[] {
         properties: {
           [`${p}serviceUrl`]: { type: 'string', title: t.serviceUrl, description: t.serviceUrlDesc, 'x-hot': true },
           [`${p}serviceTokenSecret`]: { type: 'string', title: t.serviceTokenSecret, description: t.serviceTokenSecretDesc, 'x-hot': true },
-          [`${p}model`]: { type: 'string', title: t.model, 'x-options': VOICE_MODELS_KIND, 'x-hot': true },
-          [`${p}voice`]: { type: 'string', title: t.voice, 'x-options': VOICE_OPTIONS_KIND, 'x-hot': true },
           [`${p}format`]: { type: 'string', title: t.format, enum: ['wav', 'mp3'], 'x-hot': true },
           [`${p}timeoutMs`]: { type: 'integer', title: t.timeoutMs, minimum: 1000, maximum: 600_000, 'x-hot': true },
         },

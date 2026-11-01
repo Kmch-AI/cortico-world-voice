@@ -1,15 +1,13 @@
 import { describeTools, type WorldDefinition } from 'cortico/world.ts';
-import { VOICE_DEFAULTS, VOICE_ID } from './config.ts';
-import { currentOptions } from './options.ts';
+import { VOICE_DEFAULTS, VOICE_ID, VOICE_LABEL } from './config.ts';
 import { VOICE_TOOL_DECLS } from './tools.ts';
 import type { VoiceConfigSection } from './types.ts';
 import { VoiceWorld } from './world.ts';
 
 export const VOICE: WorldDefinition<VoiceConfigSection> = {
   id: VOICE_ID,
-  label: 'Voice',
-  defaults: () => ({ ...VOICE_DEFAULTS }),
-  configOptions: (kind) => currentOptions(kind),
+  label: VOICE_LABEL,
+  defaults: () => ({ ...VOICE_DEFAULTS, modelOptions: {} }),
   create: (ctx) => new VoiceWorld({
     cfg: ctx.cfg,
     timezone: ctx.timezone,

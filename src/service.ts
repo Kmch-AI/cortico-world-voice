@@ -5,7 +5,8 @@
  * 令牌只从 secret() 现读,不写日志、不留副本。
  */
 import type {
-  AudioFormat, ModelOption, ServiceHealth, TtsAudio, TtsRequest, VoiceConfigSection, VoiceOption,
+  AudioFormat, ModelParameter, ModelParameterType, ServiceHealth, TtsAudio, TtsRequest,
+  VoiceConfigSection, VoiceModel, VoiceOption,
 } from './types.ts';
 
 const PROBE_TIMEOUT_MS = 8000;
@@ -37,6 +38,9 @@ export class ServiceClient implements SpeechService {
     };
     const model = cfg.model.trim();
     if (model) body.model = model;
+    // 只带当前模型自己的参数;其他模型的配置不混进这次请求。
+    const options = cfg.modelOptions?.[model];
+    if (options && Object.keys(options).length > 0) body.options = options;
     const voice = (req.voice ?? '').trim() || cfg.voice.trim();
     if (voice) body.voice = voice;
     const instruct = (req.instruct ?? '').trim();
@@ -96,7 +100,7 @@ export class ServiceClient implements SpeechService {
     }
   }
 
-  async models(): Promise<ModelOption[]> {
+  async models(): Promise<VoiceModel[]> {
     const payload = await this.request(
       this.endpoint('/v1/models'),
       { method: 'GET', headers: this.headers() },
@@ -105,9 +109,9 @@ export class ServiceClient implements SpeechService {
       (res) => this.readJson(res),
     ) as { data?: unknown } | unknown[] | null;
     const raw = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
-    return raw.flatMap((item): ModelOption[] => {
-      const option = optionOf(item);
-      return option ? [option] : [];
+    return raw.flatMap((item): VoiceModel[] => {
+      const model = modelOf(item);
+      return model ? [model] : [];
     });
   }
 
@@ -232,6 +236,83 @@ function optionOf(item: unknown): { value: string; label: string } | null {
   const label = [o.label, o.display_name, o.displayName, o.name]
     .find((v): v is string => typeof v === 'string' && v.trim() !== '')?.trim() ?? value;
   return { value, label };
+}
+
+const PARAMETER_TYPES = new Set<ModelParameterType>([
+  'string', 'enum', 'bool', 'int', 'float', 'string_list', 'path', 'path_list',
+]);
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+/** 目录里的音色/取值可能写成字符串,也可能写成对象;只留去重后的字符串。 */
+function stringItems(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    const text = typeof item === 'string'
+      ? item.trim()
+      : item && typeof item === 'object' && !Array.isArray(item)
+        ? firstString(
+          (item as Record<string, unknown>).value,
+          (item as Record<string, unknown>).id,
+          (item as Record<string, unknown>).name,
+          (item as Record<string, unknown>).label,
+        )
+        : '';
+    if (text && !out.includes(text)) out.push(text);
+  }
+  return out;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function parameterOf(item: unknown): ModelParameter | null {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  const o = item as Record<string, unknown>;
+  const name = firstString(o.name);
+  const type = firstString(o.type) as ModelParameterType;
+  if (!name || !PARAMETER_TYPES.has(type)) return null;
+  const description = firstString(o.description);
+  const values = stringItems(o.values);
+  const min = finiteNumber(o.min);
+  const max = finiteNumber(o.max);
+  return {
+    name,
+    type,
+    ...(description ? { description } : {}),
+    ...(values.length ? { values } : {}),
+    ...(o.default !== undefined ? { default: o.default } : {}),
+    ...(min !== undefined ? { min } : {}),
+    ...(max !== undefined ? { max } : {}),
+  };
+}
+
+/** 服务目录的一项:模型 id、显示名、音色与请求参数;不认识的字段不带走。 */
+function modelOf(item: unknown): VoiceModel | null {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  const o = item as Record<string, unknown>;
+  const id = firstString(o.id, o.value, o.name);
+  if (!id) return null;
+  const label = firstString(o.display_name, o.displayName, o.label);
+  const parameters = Array.isArray(o.parameters)
+    ? o.parameters.flatMap((entry): ModelParameter[] => {
+      const parameter = parameterOf(entry);
+      return parameter ? [parameter] : [];
+    })
+    : [];
+  return {
+    id,
+    ...(label ? { label } : {}),
+    voices: stringItems(o.voices),
+    ...(parameters.length ? { parameters } : {}),
+  };
 }
 
 /** 音频回应只接受 wav / mpeg;octet-stream 按请求的格式归一。 */

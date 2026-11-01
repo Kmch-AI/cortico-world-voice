@@ -7,7 +7,7 @@ import type { AudioPlayer, PlayResult } from '../../src/audio/player.ts';
 import { VOICE_DEFAULTS } from '../../src/config.ts';
 import type { SpeechService } from '../../src/service.ts';
 import type {
-  ModelOption, ServiceHealth, TtsAudio, TtsRequest, VoiceConfigSection, VoiceOption,
+  ServiceHealth, TtsAudio, TtsRequest, VoiceConfigSection, VoiceModel, VoiceOption,
 } from '../../src/types.ts';
 import { VoiceWorld, type VoiceWorldDeps } from '../../src/world.ts';
 
@@ -40,11 +40,15 @@ export function wavBytes(seconds = 1, rate = 8000): Uint8Array {
 export interface FakeService extends SpeechService {
   calls: TtsRequest[];
   voiceList: VoiceOption[];
-  modelList: ModelOption[];
+  modelList: VoiceModel[];
+  /** 目录请求抛这个错;`synthesize` 用 `error`。 */
+  catalogError: Error | null;
   healthState: ServiceHealth;
   healthCalls: number;
   voiceCalls: number;
   modelCalls: number;
+  /** 每次 `voices()` 收到的模型 id。 */
+  voiceModels: string[];
   error: Error | null;
 }
 
@@ -52,11 +56,21 @@ export function fakeService(patch: Partial<FakeService> = {}): FakeService {
   const service: FakeService = {
     calls: [],
     voiceList: [{ value: '4016', label: '4016' }],
-    modelList: [{ value: 'ming3-tts', label: 'ming3-tts' }],
+    modelList: [{
+      id: 'ming3-tts',
+      label: 'Ming 3.0',
+      voices: ['4016'],
+      parameters: [
+        { name: 'template_name', type: 'enum', values: ['tts', 'basic'], default: 'tts' },
+        { name: 'seed', type: 'int', min: 0, default: 1895 },
+      ],
+    }],
+    catalogError: null,
     healthState: { ok: true, ready: true, status: 'ok', detail: 'ok · 1 models', models: 1 },
     healthCalls: 0,
     voiceCalls: 0,
     modelCalls: 0,
+    voiceModels: [],
     error: null,
     async synthesize(req: TtsRequest): Promise<TtsAudio> {
       service.calls.push(req);
@@ -67,12 +81,15 @@ export function fakeService(patch: Partial<FakeService> = {}): FakeService {
       service.healthCalls += 1;
       return service.healthState;
     },
-    async models(): Promise<ModelOption[]> {
+    async models(): Promise<VoiceModel[]> {
       service.modelCalls += 1;
+      if (service.catalogError) throw service.catalogError;
       return service.modelList;
     },
-    async voices(): Promise<VoiceOption[]> {
+    async voices(model?: string): Promise<VoiceOption[]> {
       service.voiceCalls += 1;
+      service.voiceModels.push(model ?? '');
+      if (service.catalogError) throw service.catalogError;
       return service.voiceList;
     },
     ...patch,
