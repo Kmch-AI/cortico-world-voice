@@ -71,9 +71,10 @@ export class VoiceTap implements OutputTap {
     if (!name || name.startsWith('voice_')) return;
     if (this.emitted.has(index)) return;
     if (!toolNames(this.opts.cfg()).has(name)) return;
-    this.emitted.add(index);
     const text = textOfToolArgs(args);
-    if (text) this.opts.onText(text, `tool:${name}`);
+    if (!text) return;
+    this.emitted.add(index);
+    this.opts.onText(text, `tool:${name}`);
   }
 
   onEvent(event: StreamEvent): void {

@@ -12,8 +12,11 @@ import { settle, testWorld, type TestWorldHandle } from './helpers/voice.ts';
 const contexts: TestWorldHandle[] = [];
 const hosts: FakeHost[] = [];
 
-function make(patch: Parameters<typeof testWorld>[0] = {}): TestWorldHandle {
-  const handle = testWorld(patch);
+function make(
+  patch: Parameters<typeof testWorld>[0] = {},
+  deps: Parameters<typeof testWorld>[1] = {},
+): TestWorldHandle {
+  const handle = testWorld(patch, deps);
   contexts.push(handle);
   return handle;
 }
@@ -55,6 +58,7 @@ describe('Voice World', () => {
     const outcome = await tool.handler({ text: '**你好**呀' }, {} as ToolCallContext);
     expect(typeof outcome).toBe('object');
     expect((outcome as { text: string }).text).toContain('Synthesized one line');
+    expect((outcome as { blobs?: unknown[] }).blobs).toHaveLength(1);
     expect(h.backend.calls[0]?.text).toBe('你好呀');
   });
 
@@ -126,6 +130,27 @@ describe('Voice World', () => {
     tap.onEvent(call);
     await settle(10);
     expect(h.backend.calls.map((c) => c.text)).toEqual(['你好呀']);
+  });
+
+  it('自动来源里的【唱】转给唱歌插件,不走 TTS', async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (input: Parameters<typeof fetch>[0]) => {
+      urls.push(String(input));
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'audio/wav' } });
+    }) as typeof fetch;
+    const h = make(
+      { autoProbability: 1, playback: 'none', singUrl: 'http://127.0.0.1:9882' },
+      { fetch: fetchImpl },
+    );
+    await started(h);
+    const tap = h.world.outputTap()!;
+    tap.onEvent(event({
+      type: 'response.output_item.done',
+      item: { type: 'function_call', name: 'pet_say', arguments: '{"script":"【唱】啦啦啦"}' },
+    }));
+    await settle(10);
+    expect(urls.some((url) => url.endsWith('/sing'))).toBe(true);
+    expect(h.backend.calls).toEqual([]);
   });
 
   it('webUi 的灯在探活后变 online', async () => {

@@ -61,6 +61,8 @@ corepack pnpm add "D:/path/to/cortico-world-voice" --ignore-workspace
 
 同一段文字 5 秒内只念一次。概率按「一段话」掷，不按句掷。
 
+只想响应工具与显式请求、不要随机朗读：保留 `autoSpeak: true`，把 `autoProbability` 设为 `0`。把 `autoSpeak` 整个关掉会让 tap 不再挂载，显式关键词也就看不到正文了；这时只保留 `voice_speak` 工具触发。
+
 自动朗读依赖 Persona 把已挂载 World 的 `outputTap()` 扇进主 session；仓内 `cormini` 与 Coopanion 都这样做。只想要工具触发时，把 `autoSpeak` 关掉即可。
 
 ## 情绪、语速与标签
@@ -135,6 +137,7 @@ pnpm typecheck
 pnpm test
 pnpm smoke:audiocpp http://127.0.0.1:8000 out.wav   # 真服务,需要先启动 audiocpp
 pnpm smoke:player out.wav                            # 本机播放器,音量 0
+pnpm smoke:chain http://127.0.0.1:8000               # 触发→过滤→合成→tts.voice 全链路
 ```
 
 装进 Cortico 后应看到：World 页多一张「语音」卡；启用后「语音服务」灯亮；让 bot 调 `voice_speak` 能听见；说「念给我听」会绕过概率；`playback: event` 时时间线出现 `tts.voice`。

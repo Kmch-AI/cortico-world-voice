@@ -38,7 +38,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "smoke:audiocpp": "tsx scripts/smoke-audiocpp.ts",
-    "smoke:player": "tsx scripts/smoke-player.ts"
+    "smoke:player": "tsx scripts/smoke-player.ts",
+    "smoke:chain": "tsx scripts/smoke-chain.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

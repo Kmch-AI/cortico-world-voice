@@ -134,6 +134,7 @@ export class VoiceWorld implements World {
       writeTemp: (bytes, mime) => this.writeTemp(bytes, mime),
       removeTemp: (path) => { try { rmSync(path, { force: true }); } catch { /* 临时文件,删不掉也无所谓 */ } },
       emit: (audio, job, chunk) => this.emitVoice(audio, job, chunk),
+      onError: (job, message) => { void this.pushFailure(message, { source: job.source }); },
     });
     this.tap = new VoiceTap({
       cfg: () => this.cfg,
@@ -270,10 +271,28 @@ export class VoiceWorld implements World {
 
   // ———————— 触发 ————————
 
+  /** 同一段文字在去重窗口内只处理一次。 */
+  private fresh(text: string): boolean {
+    const key = text.toLowerCase().replace(/\s+/g, '');
+    const now = this.deps.now();
+    for (const [seen, at] of this.lastSpoken) if (now - at > DEDUPE_WINDOW_MS) this.lastSpoken.delete(seen);
+    if (this.lastSpoken.has(key)) return false;
+    this.lastSpoken.set(key, now);
+    return true;
+  }
+
   private consider(raw: string, source: string): void {
     if (!this.started) return;
     const cfg = this.cfg;
     if (!cfg.autoSpeak) return;
+
+    // 唱歌标记是显式的,不掷概率。没配唱歌服务时按普通文本念。
+    const sing = singRequestOf(raw);
+    if (sing.marked && cfg.singUrl.trim()) {
+      if (sing.lyrics && this.fresh(sing.lyrics)) this.enqueueSing(sing.lyrics, source);
+      return;
+    }
+
     const filtered = filterSpeech(raw, cfg);
     if (!filtered.text) return;
 
@@ -282,18 +301,33 @@ export class VoiceWorld implements World {
       : '';
     const explicit = filtered.forced || (cfg.explicitTrigger && hasKeyword(userText, cfg.explicitKeywords));
     if (!explicit && this.deps.rng() >= cfg.autoProbability) return;
-
-    const key = filtered.text.toLowerCase().replace(/\s+/g, '');
-    const now = this.deps.now();
-    for (const [seen, at] of this.lastSpoken) if (now - at > DEDUPE_WINDOW_MS) this.lastSpoken.delete(seen);
-    if (this.lastSpoken.has(key)) return;
-    this.lastSpoken.set(key, now);
+    if (!this.fresh(filtered.text)) return;
 
     this.enqueue(filtered.text, {
       source,
       ...(filtered.emotion ? { emotion: filtered.emotion } : {}),
     });
     this.log.debug('自动朗读', { source, explicit, chars: [...filtered.text].length });
+  }
+
+  private enqueueSing(lyrics: string, source: string): void {
+    const cfg = this.cfg;
+    if (!cfg.singUrl.trim()) return;
+    this.queue.enqueue({
+      text: lyrics,
+      chunks: [lyrics],
+      silent: cfg.playback === 'none',
+      source,
+      produce: (chunk, signal) => singRemote({
+        url: cfg.singUrl,
+        token: cfg.singToken,
+        lyrics: chunk,
+        timeoutMs: Math.max(cfg.timeoutMs, 180_000),
+        fetch: this.deps.fetch,
+        signal,
+      }),
+    });
+    this.log.info('自动唱歌', { source, chars: [...lyrics].length });
   }
 
   private enqueue(text: string, opts: EnqueueOptions): ReturnType<SpeechQueue['enqueue']> | null {
@@ -467,7 +501,9 @@ export class VoiceWorld implements World {
     const text = silent
       ? `Synthesized one line${duration} without playing.`
       : `Said one line${duration} on this computer.`;
-    if (!audio || !this.cfg.shareAudio) return { text };
+    if (!audio) return { text };
+    // silent 的目的就是把音频交给别的渠道;不带附件等于白合成。
+    if (!this.cfg.shareAudio && !silent) return { text };
     const ext = audio.mime.includes('mpeg') ? 'mp3' : 'wav';
     return {
       text,

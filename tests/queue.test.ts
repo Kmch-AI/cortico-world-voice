@@ -87,6 +87,31 @@ describe('SpeechQueue', () => {
     expect(player.hushed).toBeGreaterThan(0);
   });
 
+  it('合成失败时回调 onError 并收束 started/done', async () => {
+    const errors: string[] = [];
+    const queue = new SpeechQueue({
+      player: null,
+      settings: () => ({ playback: 'none', volume: 1, gapMs: 0 }),
+      log: quietLogger,
+      sleep: async () => {},
+      writeTemp: () => 'clip.wav',
+      removeTemp: () => {},
+      onError: (_job, message) => { errors.push(message); },
+    });
+    const enqueued = queue.enqueue({
+      text: '甲。',
+      chunks: ['甲。'],
+      silent: true,
+      source: 'test',
+      produce: async () => { throw new Error('boom'); },
+    });
+    await enqueued.started;
+    const result = await enqueued.done;
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('boom');
+    expect(errors).toEqual(['boom']);
+  });
+
   it('playback=event 时把每块交给事件出口', async () => {
     const emitted: string[] = [];
     const queue = new SpeechQueue({

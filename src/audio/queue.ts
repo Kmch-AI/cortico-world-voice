@@ -43,6 +43,8 @@ export interface QueueDeps {
   removeTemp(path: string): void;
   /** playback=event 时把音频交给事件出口。 */
   emit?(audio: TtsAudio, job: SpeechJob, chunk: string): Promise<void> | void;
+  /** 合成或播放失败;用来发只归档的失败事件。 */
+  onError?(job: SpeechJob, message: string): void;
 }
 
 export interface Enqueued {
@@ -127,6 +129,7 @@ export class SpeechQueue {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           this.deps.log.warn('朗读失败', { source: item.job.source, err: message });
+          this.deps.onError?.(item.job, message);
           item.started();
           item.resolve({ ok: false, cancelled: item.cancelled, seconds: 0, chunks: 0, audios: [], error: message });
         } finally {
@@ -184,6 +187,7 @@ export class SpeechQueue {
         if (lastPlay === 'cut' || item.cancelled) { dropNext(); break; }
         if (lastPlay === 'failed') {
           dropNext();
+          this.deps.onError?.(job, 'local playback failed');
           return {
             ok: false, cancelled: item.cancelled, seconds, chunks: audios.length, audios,
             error: 'local playback failed',
@@ -192,6 +196,7 @@ export class SpeechQueue {
       } else {
         finishStart();
         dropNext();
+        this.deps.onError?.(job, 'no local audio player');
         return {
           ok: false, cancelled: item.cancelled, seconds, chunks: audios.length, audios,
           error: 'no local audio player',

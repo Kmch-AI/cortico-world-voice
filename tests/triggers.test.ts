@@ -59,6 +59,15 @@ describe('VoiceTap', () => {
     expect(seen).toEqual([{ text: '你好', source: 'tool:pet_say' }]);
   });
 
+  it('参数结束事件为空时,等完整 item 再交出去', () => {
+    const seen: Array<{ text: string; source: string }> = [];
+    const tap = tapOf(seen);
+    tap.onEvent(event({ type: 'response.output_item.added', output_index: 0, item: { type: 'function_call', name: 'pet_say' } }));
+    tap.onEvent(event({ type: 'response.function_call_arguments.done', output_index: 0, arguments: '' }));
+    tap.onEvent(event({ type: 'response.output_item.done', output_index: 0, item: { type: 'function_call', name: 'pet_say', arguments: '{"script":"你好"}' } }));
+    expect(seen).toEqual([{ text: '你好', source: 'tool:pet_say' }]);
+  });
+
   it('voice_ 自己的工具不再触发朗读', () => {
     const seen: Array<{ text: string; source: string }> = [];
     const tap = tapOf(seen);
