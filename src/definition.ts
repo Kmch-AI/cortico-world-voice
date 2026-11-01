@@ -1,6 +1,6 @@
 import { describeTools, type WorldDefinition } from 'cortico/world.ts';
-import { VOICE_DEFAULTS, VOICE_ID, VOICE_OPTIONS_KIND } from './config.ts';
-import { currentVoiceOptions } from './options.ts';
+import { VOICE_DEFAULTS, VOICE_ID } from './config.ts';
+import { currentOptions } from './options.ts';
 import { VOICE_TOOL_DECLS } from './tools.ts';
 import type { VoiceConfigSection } from './types.ts';
 import { VoiceWorld } from './world.ts';
@@ -9,7 +9,7 @@ export const VOICE: WorldDefinition<VoiceConfigSection> = {
   id: VOICE_ID,
   label: 'Voice',
   defaults: () => ({ ...VOICE_DEFAULTS }),
-  configOptions: (kind) => (kind === VOICE_OPTIONS_KIND ? currentVoiceOptions() : []),
+  configOptions: (kind) => currentOptions(kind),
   create: (ctx) => new VoiceWorld({
     cfg: ctx.cfg,
     timezone: ctx.timezone,
@@ -20,7 +20,6 @@ export const VOICE: WorldDefinition<VoiceConfigSection> = {
   describe: {
     tools: describeTools(VOICE_TOOL_DECLS, {
       voice_speak: { zh: '现在念一句;可指定情绪、表演指令、音色与语速,也可以只合成不出声。', en: 'Say one line now, optionally with an emotion, direction, voice and speed, or synthesize it silently.' },
-      voice_sing: { zh: '把一句歌词交给唱歌插件唱出来。', en: 'Sing one lyric line through the configured singing service.' },
       voice_hush: { zh: '立刻停声并清空排队。', en: 'Stop the voice and drop queued lines.' },
       voice_style: { zh: '读或改自动朗读使用的长期音色与情绪。', en: 'Read or change the standing voice style used by automatic reading.' },
     }),

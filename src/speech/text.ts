@@ -86,7 +86,7 @@ export function filterSpeech(raw: string, cfg: VoiceConfigSection): FilteredSpee
 
   text = canonicalizeTags(text);
   text = stripUnknownTags(text);
-  if (!keepsParalinguistic(cfg.backend, cfg.paralinguistic)) text = stripParalinguisticTags(text);
+  if (!keepsParalinguistic(cfg.paralinguistic)) text = stripParalinguisticTags(text);
 
   if (cfg.filterEmoji) text = text.replace(EMOJI_RE, '').replace(SYMBOL_RE, '');
 

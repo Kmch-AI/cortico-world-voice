@@ -8,7 +8,7 @@ export const VOICE_TOOL_DECLS: readonly ToolSpec[] = [
       'Say a line aloud in your voice through the person\'s speakers, or only synthesize it when silent is true. '
       + 'Use it when the person asks for voice, when this line needs a specific emotion or voice, or when automatic reading is off. '
       + 'It only makes sound; the visible reply still goes through the channel\'s own send tool. '
-      + 'When the backend supports paralinguistic tags, keep them inline in the text: [Laughter], [Sigh], [Breathing], [Uhm], [Question-ei] and the like are performed, not read out.',
+      + 'When the speech service supports paralinguistic tags, keep them inline in the text: [Laughter], [Sigh], [Breathing], [Uhm], [Question-ei] and the like are performed, not read out.',
     tags: ['speak'],
     parameters: {
       type: 'object',
@@ -22,21 +22,6 @@ export const VOICE_TOOL_DECLS: readonly ToolSpec[] = [
         silent: { type: 'boolean', description: 'true synthesizes without playing on this computer; use it for a line meant for another channel.' },
       },
       required: ['text'],
-    },
-  },
-  {
-    name: 'voice_sing',
-    description:
-      'Sing a lyric line through the configured singing plugin. It only makes sound; the visible reply still goes through the channel\'s own send tool. '
-      + 'If no singing plugin is configured, or it is not ready, the call fails instead of speaking the lyrics.',
-    tags: ['speak'],
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        lyrics: { type: 'string', maxLength: 2000, description: 'The lyric line to sing.' },
-      },
-      required: ['lyrics'],
     },
   },
   {

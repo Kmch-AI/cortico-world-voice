@@ -1,10 +1,14 @@
 {
   "name": "@kmchai/cortico-world-voice",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Cortico World: protocol-agnostic TTS with probabilistic voice replies, emotion and paralinguistic tag control, text filtering, local playback and a local speech API",
+  "description": "Cortico World: voice tools, probabilistic reading, emotion and paralinguistic tags, text filtering and local playback; speech is synthesized by the Kmch AI service over HTTP",
   "author": "kmchai",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kmch-AI/cortico-world-voice.git"
+  },
   "keywords": [
     "cortico-world",
     "cortico",
@@ -27,21 +31,22 @@
   "cortico": {
     "kind": "world",
     "api": 6,
-    "displayName": "Voice",
+    "displayName": "Kmch AI · 语音",
     "locales": {
       "zh": {
-        "displayName": "语音",
-        "description": "多协议语音 World:按概率自动朗读、控制情绪与副语言标签、过滤要读的文本;本机播放、本地语音接口与唱歌联动。"
+        "displayName": "Kmch AI · 语音",
+        "description": "语音 World:工具、概率朗读、情绪与副语言标签、文本过滤、本机播放;协议与 HTTP 服务由 Kmch AI · 服务提供。"
       },
       "en": {
-        "displayName": "Voice",
-        "description": "Protocol-agnostic TTS World: probabilistic voice replies, emotion and paralinguistic tags, speech text filtering, local playback and a local speech API."
+        "displayName": "Kmch AI · Voice",
+        "description": "Voice World: tools, probabilistic reading, emotion and paralinguistic tags, text filtering and local playback; the Kmch AI service provides the protocol and HTTP API."
       }
     },
     "tags": [
       "voice",
       "local",
       "external-setup",
+      "requires-extension",
       "experimental"
     ],
     "describe": "describe.json"
@@ -55,7 +60,6 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "smoke:audiocpp": "tsx scripts/smoke-audiocpp.ts",
     "smoke:player": "tsx scripts/smoke-player.ts",
     "smoke:chain": "tsx scripts/smoke-chain.ts"
   },

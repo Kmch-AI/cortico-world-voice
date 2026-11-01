@@ -1,6 +1,6 @@
 /**
- * 完整链路:真实 audiocpp → 触发 → 过滤 → 合成 → 事件出口。
- * 需要一台已经跑着的 audiocpp_server:`pnpm smoke:chain http://127.0.0.1:8000`。
+ * 完整链路:Kmch AI · 服务 → 触发 → 过滤 → 合成 → 事件出口。
+ * 需要服务网关已经跑着:`pnpm smoke:chain http://127.0.0.1:9883`。
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,13 +11,12 @@ import { VoiceWorld } from '../src/world.ts';
 import { FakeHost } from '../tests/helpers/fake-host.ts';
 import { quietLogger } from '../tests/helpers/voice.ts';
 
-const baseUrl = process.argv[2] ?? 'http://127.0.0.1:8000';
+const serviceUrl = process.argv[2] ?? 'http://127.0.0.1:9883';
 const dir = mkdtempSync(join(tmpdir(), 'voice-chain-'));
 const cfg: VoiceConfigSection = {
   ...VOICE_DEFAULTS,
   enabled: true,
-  backend: 'audiocpp',
-  baseUrl,
+  serviceUrl,
   playback: 'event',
   autoSpeak: true,
   autoProbability: 1,

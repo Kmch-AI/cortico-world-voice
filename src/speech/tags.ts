@@ -5,7 +5,7 @@
  * 情绪标记只是控制注释,合成前从文本里删掉。
  */
 
-/** Ming 3.0 / audiocpp 支持的副语言标签。 */
+/** Ming 3.0 系模型支持的副语言标签。 */
 export const PARALINGUISTIC_TAGS: readonly string[] = [
   'Breathing',
   'Cough',
@@ -57,13 +57,10 @@ export function stripUnknownTags(text: string): string {
 }
 
 /**
- * 自动模式只在支持标签的后端保留标签。`audiocpp` 的 Ming 3.0 支持;
- * OpenAI 兼容服务把它们当正文念,所以删掉。
+ * auto 保留标签,由服务里的模型决定演不演;keep 一律保留;strip 一律删掉。
  */
-export function keepsParalinguistic(backend: string, mode: 'auto' | 'keep' | 'strip'): boolean {
-  if (mode === 'keep') return true;
-  if (mode === 'strip') return false;
-  return backend === 'audiocpp';
+export function keepsParalinguistic(mode: 'auto' | 'keep' | 'strip'): boolean {
+  return mode !== 'strip';
 }
 
 const EMOTION_MARKERS: ReadonlyArray<RegExp> = [

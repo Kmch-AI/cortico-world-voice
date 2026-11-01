@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { VOICE_DEFAULTS } from '../src/config.ts';
 import { splitSpeech, truncateSpeech } from '../src/speech/chunk.ts';
 import { buildInstruct, classifySpeed, resolveStyle } from '../src/speech/style.ts';
-import { canonicalizeTags, hasParalinguisticTag, stripUnknownTags, tagsIn, takeEmotionMarker } from '../src/speech/tags.ts';
+import {
+  canonicalizeTags, hasParalinguisticTag, keepsParalinguistic, stripUnknownTags, tagsIn, takeEmotionMarker,
+} from '../src/speech/tags.ts';
 import { filterSpeech } from '../src/speech/text.ts';
 
 const cfg = (patch: Partial<typeof VOICE_DEFAULTS> = {}) => ({ ...VOICE_DEFAULTS, ...patch });
@@ -26,14 +28,14 @@ describe('filterSpeech', () => {
     expect(out.emotion).toBe('害羞');
   });
 
-  it('副语言标签在 audiocpp 上保留并归一大小写,表外标签删掉', () => {
-    const out = filterSpeech('[laughter]你好[happy]', cfg({ backend: 'audiocpp', paralinguistic: 'auto' }));
+  it('paralinguistic=auto 保留标签并归一大小写,表外标签删掉', () => {
+    const out = filterSpeech('[laughter]你好[happy]', cfg({ paralinguistic: 'auto' }));
     expect(out.text).toBe('[Laughter]你好');
     expect(tagsIn(out.text)).toEqual(['Laughter']);
   });
 
-  it('OpenAI 兼容后端在 auto 模式下删掉副语言标签', () => {
-    const out = filterSpeech('[Laughter]你好', cfg({ backend: 'openai', paralinguistic: 'auto' }));
+  it('paralinguistic=strip 删掉副语言标签', () => {
+    const out = filterSpeech('[Laughter]你好', cfg({ paralinguistic: 'strip' }));
     expect(out.text).toBe('你好');
   });
 
@@ -59,6 +61,12 @@ describe('tags', () => {
 
   it('只取第一个情绪标记', () => {
     expect(takeEmotionMarker('[emotion:开心]甲[emotion:悲伤]乙')).toEqual({ text: ' 甲 乙', emotion: '开心' });
+  });
+
+  it('标签保留策略:auto/keep 保留,strip 删除', () => {
+    expect(keepsParalinguistic('auto')).toBe(true);
+    expect(keepsParalinguistic('keep')).toBe(true);
+    expect(keepsParalinguistic('strip')).toBe(false);
   });
 });
 

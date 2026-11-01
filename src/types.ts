@@ -1,9 +1,7 @@
-/** 共享类型:配置段、合成请求与音频、协议适配器接口。 */
-import type { Logger } from 'cortico/core/types.ts';
+/** 共享类型:配置段、合成请求与音频、服务目录与健康。 */
 
-export type BackendId = 'audiocpp' | 'openai' | 'custom';
 export type AudioFormat = 'wav' | 'mp3';
-/** 情绪怎么发给后端。 */
+/** 情绪怎么发给服务。 */
 export type EmotionMode = 'instruct' | 'categorical' | 'basic' | 'tags' | 'none';
 /** 副语言标签(`[Laughter]` 等)怎么处理。 */
 export type ParalinguisticMode = 'auto' | 'keep' | 'strip';
@@ -13,13 +11,13 @@ export type PlaybackMode = 'local' | 'event' | 'none';
 export interface VoiceConfigSection {
   enabled: boolean;
 
-  // 连接与协议
-  backend: BackendId;
-  baseUrl: string;
+  // 连接
+  /** Kmch AI · 服务 的网关地址。 */
+  serviceUrl: string;
+  /** 服务令牌的环境变量名;空表示服务不校验。 */
+  serviceTokenSecret: string;
   model: string;
   voice: string;
-  /** 密钥的环境变量名;空表示不需要。 */
-  apiKeySecret: string;
   format: AudioFormat;
   timeoutMs: number;
 
@@ -65,28 +63,6 @@ export interface VoiceConfigSection {
   gapMs: number;
   /** 工具回执带音频附件,渠道工具可用 `[blob …]` 句柄发送。 */
   shareAudio: boolean;
-
-  // 本地语音接口
-  httpApi: boolean;
-  httpPort: number;
-  httpToken: string;
-  /** 经 HTTP 接口合成时是否也在本机播放。 */
-  httpPlay: boolean;
-
-  // 唱歌
-  singUrl: string;
-  singToken: string;
-
-  // custom 协议
-  customUrl: string;
-  customMethod: 'POST' | 'GET';
-  /** JSON 对象字符串,值里的 `${KEY}` 换成 apiKeySecret 读到的密钥。 */
-  customHeaders: string;
-  /** JSON 模板;占位符见 README。 */
-  customBody: string;
-  customResponse: 'audio' | 'base64' | 'url';
-  /** base64/url 回应里音频字段的点路径。 */
-  customAudioPath: string;
 }
 
 /** 一次合成。`text` 已经过过滤,不再含控制标记。 */
@@ -107,30 +83,20 @@ export interface TtsAudio {
   seconds?: number;
 }
 
-export interface VoiceOption {
+/** 配置下拉的一项;`value` 写回配置,`label` 显示。 */
+export interface SelectOption {
   value: string;
   label: string;
 }
 
-export interface BackendHealth {
+export type VoiceOption = SelectOption;
+export type ModelOption = SelectOption;
+
+/** `GET /health` 的摘要;`ok` 只表示网关有回应,`ready` 表示至少有一个服务能合成。 */
+export interface ServiceHealth {
   ok: boolean;
+  ready: boolean;
+  status: string;
   detail?: string;
-}
-
-/** 适配器运行时可用的东西。 */
-export interface BackendContext {
-  cfg: VoiceConfigSection;
-  secret(name: string): string;
-  fetch: typeof fetch;
-  log: Logger;
-}
-
-/** 一种语音合成协议。新增协议 = 实现这个接口,再在 registry 里登记。 */
-export interface TtsBackend {
-  readonly id: BackendId;
-  readonly label: string;
-  synthesize(req: TtsRequest, ctx: BackendContext): Promise<TtsAudio>;
-  /** 后端能列出的音色;不支持时返回空数组。 */
-  listVoices(ctx: BackendContext): Promise<VoiceOption[]>;
-  health(ctx: BackendContext): Promise<BackendHealth>;
+  models?: number;
 }

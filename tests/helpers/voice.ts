@@ -1,11 +1,14 @@
-/** 测试用的假后端、假播放器与临时 World。 */
+/** 测试用的假服务客户端、假播放器与临时 World。 */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Logger } from 'cortico/core/types.ts';
 import type { AudioPlayer, PlayResult } from '../../src/audio/player.ts';
 import { VOICE_DEFAULTS } from '../../src/config.ts';
-import type { TtsAudio, TtsBackend, TtsRequest, VoiceConfigSection, VoiceOption } from '../../src/types.ts';
+import type { SpeechService } from '../../src/service.ts';
+import type {
+  ModelOption, ServiceHealth, TtsAudio, TtsRequest, VoiceConfigSection, VoiceOption,
+} from '../../src/types.ts';
 import { VoiceWorld, type VoiceWorldDeps } from '../../src/world.ts';
 
 export const quietLogger: Logger = {
@@ -34,28 +37,47 @@ export function wavBytes(seconds = 1, rate = 8000): Uint8Array {
   return new Uint8Array(buf);
 }
 
-export interface FakeBackend extends TtsBackend {
+export interface FakeService extends SpeechService {
   calls: TtsRequest[];
-  voices: VoiceOption[];
-  healthState: { ok: boolean; detail?: string };
+  voiceList: VoiceOption[];
+  modelList: ModelOption[];
+  healthState: ServiceHealth;
+  healthCalls: number;
+  voiceCalls: number;
+  modelCalls: number;
+  error: Error | null;
 }
 
-export function fakeBackend(patch: Partial<TtsBackend> = {}): FakeBackend {
-  const backend: FakeBackend = {
-    id: 'audiocpp',
-    label: 'fake',
+export function fakeService(patch: Partial<FakeService> = {}): FakeService {
+  const service: FakeService = {
     calls: [],
-    voices: [{ value: '4016', label: '4016' }],
-    healthState: { ok: true },
+    voiceList: [{ value: '4016', label: '4016' }],
+    modelList: [{ value: 'ming3-tts', label: 'ming3-tts' }],
+    healthState: { ok: true, ready: true, status: 'ok', detail: 'ok · 1 models', models: 1 },
+    healthCalls: 0,
+    voiceCalls: 0,
+    modelCalls: 0,
+    error: null,
     async synthesize(req: TtsRequest): Promise<TtsAudio> {
-      backend.calls.push(req);
+      service.calls.push(req);
+      if (service.error) throw service.error;
       return { bytes: wavBytes(1), mime: 'audio/wav', seconds: 1 };
     },
-    async listVoices() { return backend.voices; },
-    async health() { return backend.healthState; },
+    async health(): Promise<ServiceHealth> {
+      service.healthCalls += 1;
+      return service.healthState;
+    },
+    async models(): Promise<ModelOption[]> {
+      service.modelCalls += 1;
+      return service.modelList;
+    },
+    async voices(): Promise<VoiceOption[]> {
+      service.voiceCalls += 1;
+      return service.voiceList;
+    },
     ...patch,
   };
-  return backend;
+  return service;
 }
 
 export class RecordingPlayer implements AudioPlayer {
@@ -79,7 +101,7 @@ export class RecordingPlayer implements AudioPlayer {
 export interface TestWorldHandle {
   world: VoiceWorld;
   cfg: VoiceConfigSection;
-  backend: FakeBackend;
+  service: FakeService;
   player: RecordingPlayer;
   dir: string;
   cleanup(): void;
@@ -88,7 +110,7 @@ export interface TestWorldHandle {
 export function testWorld(patch: Partial<VoiceConfigSection> = {}, deps: Partial<VoiceWorldDeps> = {}): TestWorldHandle {
   const dir = mkdtempSync(join(tmpdir(), 'voice-test-'));
   const cfg: VoiceConfigSection = { ...VOICE_DEFAULTS, enabled: true, playback: 'none', ...patch };
-  const backend = (deps.backend as FakeBackend | undefined) ?? fakeBackend();
+  const service = (deps.service as FakeService | undefined) ?? fakeService();
   const player = new RecordingPlayer();
   const world = new VoiceWorld({
     cfg,
@@ -98,7 +120,7 @@ export function testWorld(patch: Partial<VoiceConfigSection> = {}, deps: Partial
     persist: (p) => { Object.assign(cfg, p); },
     log: quietLogger,
     deps: {
-      backend,
+      service,
       createPlayer: () => player,
       rng: () => 0,
       now: () => 1_700_000_000_000,
@@ -107,7 +129,7 @@ export function testWorld(patch: Partial<VoiceConfigSection> = {}, deps: Partial
     },
   });
   return {
-    world, cfg, backend, player, dir,
+    world, cfg, service, player, dir,
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
 }

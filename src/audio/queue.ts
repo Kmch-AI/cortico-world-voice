@@ -9,7 +9,7 @@ import type { AudioPlayer, PlayResult } from './player.ts';
 export interface SpeechJob {
   /** 日志与回执里的正文。 */
   text: string;
-  /** 已切好的块;唱歌这类不切的只有一块。 */
+  /** 已切好的块;工具要交附件时只有一块。 */
   chunks: string[];
   /** 合成一块。 */
   produce(chunk: string, signal: AbortSignal): Promise<TtsAudio>;

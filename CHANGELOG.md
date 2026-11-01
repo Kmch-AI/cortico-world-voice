@@ -1,3 +1,22 @@
+## 0.2.0
+
+分层:协议、进程托管与 HTTP 网关移到 `@kmchai/cortico-world-service`;语音只保留工具、概率朗读、文本过滤、情绪与标签语义、队列和本机播放,经 HTTP 调服务。
+
+### 破坏性变更
+
+- 语音不再直连 TTS 后端,也不再监听本地 HTTP。合成统一走服务的 `/v1/audio/speech`,探活与目录用 `/health`、`/v1/models`、`/v1/audio/voices`;服务不可达时没有回退路径。
+- 新配置 `serviceUrl`(默认 `http://127.0.0.1:9883`)与 `serviceTokenSecret`;删除 `backend`、`baseUrl`、`apiKeySecret`、`custom*`、`http*`、`sing*`。这些后端配置改到服务 World 里。
+- 删除 `src/backends/`、`src/http.ts`、`src/sing.ts`;新增 `src/service.ts` 客户端。
+- 删除 `voice_sing` 工具、`【唱】` 前缀与全部唱歌配置;语音不唱歌,唱歌改由服务的 `/v1/audio/sing` 与网关接入。工具只剩 `voice_speak` / `voice_hush` / `voice_style`。
+- 情绪模式只决定发哪个语义字段:instruct 发 `instructions`,categorical 发 `emotion`,basic 发 `speed`,tags/none 不发;怎么落到具体模型由服务的模型 profile 决定。
+- 副语言标签 `auto` 一律保留,由服务里的模型决定演不演;保留 `keep` / `strip`。
+
+### 界面与目录
+
+- World 页改为服务灯与队列灯;徽标显示服务地址主机、模型与音色;音色与模型下拉从服务目录刷新,读不到时保留上次结果。
+- World 页链到服务 World 的配置页。
+- 环境提示词重写:只说明声音能力、工具与文本规则,不提后端、协议或 HTTP。
+
 ## 0.1.1
 
 - 市场元数据:补中文关键词与 `cortico.locales`,中文界面显示「语音」而不是包名。
