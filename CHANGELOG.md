@@ -1,3 +1,7 @@
+## 0.1.1
+
+- 市场元数据:补中文关键词与 `cortico.locales`,中文界面显示「语音」而不是包名。
+
 ## 0.1.0
 
 - 初版:协议无关的 TTS World,内置 audiocpp / OpenAI 兼容 / custom JSON 三种适配器。

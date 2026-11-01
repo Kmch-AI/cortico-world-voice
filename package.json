@@ -1,6 +1,6 @@
 {
   "name": "@kmchai/cortico-world-voice",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Cortico World: protocol-agnostic TTS with probabilistic voice replies, emotion and paralinguistic tag control, text filtering, local playback and a local speech API",
   "author": "kmchai",
@@ -11,7 +11,13 @@
     "tts",
     "voice",
     "speech",
-    "emotion"
+    "emotion",
+    "语音",
+    "语音合成",
+    "文本转语音",
+    "朗读",
+    "情感",
+    "音色"
   ],
   "engines": {
     "node": ">=22"
@@ -21,6 +27,17 @@
   "cortico": {
     "kind": "world",
     "api": 6,
+    "displayName": "Voice",
+    "locales": {
+      "zh": {
+        "displayName": "语音",
+        "description": "多协议语音 World:按概率自动朗读、控制情绪与副语言标签、过滤要读的文本;本机播放、本地语音接口与唱歌联动。"
+      },
+      "en": {
+        "displayName": "Voice",
+        "description": "Protocol-agnostic TTS World: probabilistic voice replies, emotion and paralinguistic tags, speech text filtering, local playback and a local speech API."
+      }
+    },
     "tags": [
       "voice",
       "local",
