@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Cortico World: protocol-agnostic TTS with probabilistic voice replies, emotion and paralinguistic tag control, text filtering, local playback and a local speech API",
+  "author": "kmchai",
   "license": "MIT",
   "keywords": [
     "cortico-world",
