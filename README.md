@@ -77,7 +77,7 @@ World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回�
 
 只想响应工具与显式请求、不要随机朗读:保留 `autoSpeak: true`,把 `autoProbability` 设为 `0`。把 `autoSpeak` 整个关掉会让 tap 不再挂载,显式关键词也就看不到正文了;这时只保留 `voice_speak` 工具触发。
 
-自动朗读依赖 Persona 把已挂载 World 的 `outputTap()` 扇进主 session;仓内 `cormini` 与 Coopanion 都这样做。只想要工具触发时,把 `autoSpeak` 关掉即可。
+自动朗读依赖 Persona 把已挂载 World 的 `outputTap()` 扇进主 session;`cormini`、Coopanion 与 `Kmch AI · 网关` 0.1.1 起都这样做。只想要工具触发时,把 `autoSpeak` 关掉即可。模型说完正文再调 `end_turn` 不影响朗读;与搜索等实际工具同轮的中间正文仍不念。
 
 ## 情绪、语速与标签
 

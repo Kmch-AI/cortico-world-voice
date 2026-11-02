@@ -40,6 +40,36 @@ describe('VoiceTap', () => {
     expect(seen).toEqual([]);
   });
 
+  it('只有 end_turn 时不压掉正文', () => {
+    const seen: Array<{ text: string; source: string }> = [];
+    const tap = tapOf(seen);
+    tap.onEvent(event({ type: 'response.output_text.delta', delta: '说完这句就结束。' }));
+    tap.onEvent(event({ type: 'response.output_item.added', output_index: 0, item: { type: 'function_call', name: 'end_turn' } }));
+    tap.onEvent(event({ type: 'response.output_item.done', output_index: 0, item: { type: 'function_call', name: 'end_turn', arguments: '{}' } }));
+    tap.onRoundEnd?.();
+    expect(seen).toEqual([{ text: '说完这句就结束。', source: 'text' }]);
+  });
+
+  it('end_turn 与其他工具同轮时仍不念正文', () => {
+    const seen: Array<{ text: string; source: string }> = [];
+    const tap = tapOf(seen);
+    tap.onEvent(event({ type: 'response.output_text.delta', delta: '让我查一下' }));
+    tap.onEvent(event({ type: 'response.output_item.added', output_index: 0, item: { type: 'function_call', name: 'end_turn' } }));
+    tap.onEvent(event({ type: 'response.output_item.added', output_index: 1, item: { type: 'function_call', name: 'web_search' } }));
+    tap.onRoundEnd?.();
+    expect(seen).toEqual([]);
+  });
+
+  it('先出现无名调用、随后确认是 end_turn 时仍念正文', () => {
+    const seen: Array<{ text: string; source: string }> = [];
+    const tap = tapOf(seen);
+    tap.onEvent(event({ type: 'response.output_text.delta', delta: '好。' }));
+    tap.onEvent(event({ type: 'response.output_item.added', output_index: 0, item: { type: 'function_call' } }));
+    tap.onEvent(event({ type: 'response.output_item.done', output_index: 0, item: { type: 'function_call', name: 'end_turn', arguments: '{}' } }));
+    tap.onRoundEnd?.();
+    expect(seen).toEqual([{ text: '好。', source: 'text' }]);
+  });
+
   it('指定工具的参数被当作正文', () => {
     const seen: Array<{ text: string; source: string }> = [];
     const tap = tapOf(seen);

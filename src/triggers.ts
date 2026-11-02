@@ -8,6 +8,8 @@ import type { VoiceConfigSection } from './types.ts';
 
 /** 工具参数里可能放正文的字段,按顺序取第一个字符串。 */
 const TEXT_FIELDS = ['script', 'question', 'text', 'content', 'message', 'body'] as const;
+/** 只结束这一轮的控制工具,不算「这一轮做了别的事」。 */
+const FLOW_TOOLS = new Set(['end_turn']);
 
 export function splitList(raw: string): string[] {
   return raw
@@ -60,15 +62,27 @@ interface StreamLike {
 
 export class VoiceTap implements OutputTap {
   private text = '';
-  private calls = 0;
-  private readonly names = new Map<number, string>();
+  /** 这一轮出现过的函数调用:output_index -> name;名字未知时存空串。 */
+  private readonly callNames = new Map<number, string>();
+  /** 没有 output_index 的函数调用;无法判断是不是 end_turn,按实质调用处理。 */
+  private orphanCall = false;
   private readonly emitted = new Set<number>();
 
   constructor(private readonly opts: TapOptions) {}
 
+  private noteCall(index: number, name: string): void {
+    if (index < 0) {
+      if (name && FLOW_TOOLS.has(name)) return;
+      this.orphanCall = true;
+      return;
+    }
+    if (name) this.callNames.set(index, name);
+    else if (!this.callNames.has(index)) this.callNames.set(index, '');
+  }
+
   /** 工具调用完成:同一个 output_index 只交出去一次。 */
   private takeCall(index: number, name: string, args: string): void {
-    if (!name || name.startsWith('voice_')) return;
+    if (!name || name.startsWith('voice_') || FLOW_TOOLS.has(name)) return;
     if (this.emitted.has(index)) return;
     if (!toolNames(this.opts.cfg()).has(name)) return;
     const text = textOfToolArgs(args);
@@ -85,38 +99,39 @@ export class VoiceTap implements OutputTap {
       return;
     }
     if (e.type === 'response.output_item.added' && e.item?.type === 'function_call') {
-      this.calls += 1;
-      if (e.item.name) this.names.set(index, e.item.name);
+      this.noteCall(index, e.item.name ?? '');
       return;
     }
     // 有的传输只给参数结束事件,不带完整 item;名字从 added 里取。
     if (e.type === 'response.function_call_arguments.done') {
-      const name = this.names.get(index) ?? '';
+      const name = this.callNames.get(index) ?? '';
+      this.noteCall(index, name);
       if (name) this.takeCall(index, name, e.arguments ?? '');
       return;
     }
     if (e.type === 'response.output_item.done' && e.item?.type === 'function_call') {
-      this.calls += 1;
-      const name = e.item.name ?? this.names.get(index) ?? '';
+      const name = e.item.name ?? this.callNames.get(index) ?? '';
+      this.noteCall(index, name);
       if (name) this.takeCall(index, name, e.item.arguments ?? '');
-      this.names.delete(index);
     }
   }
 
   onRoundEnd(): void {
     const text = this.text;
     this.text = '';
-    const pureText = this.calls === 0;
-    this.calls = 0;
-    this.names.clear();
+    // 只有结束轮次的调用不算实质动作;纯文本回复照样可以自动朗读。
+    const nonFlow = this.orphanCall
+      || [...this.callNames.values()].some((name) => name === '' || !FLOW_TOOLS.has(name));
+    this.callNames.clear();
+    this.orphanCall = false;
     this.emitted.clear();
-    if (pureText && text.trim()) this.opts.onText(text, 'text');
+    if (!nonFlow && text.trim()) this.opts.onText(text, 'text');
   }
 
   onAbort(): void {
     this.text = '';
-    this.calls = 0;
-    this.names.clear();
+    this.callNames.clear();
+    this.orphanCall = false;
     this.emitted.clear();
     this.opts.onAbort?.();
   }
