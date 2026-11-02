@@ -6,7 +6,7 @@ export const VOICE_TOOL_DECLS: readonly ToolSpec[] = [
     name: 'voice_speak',
     description:
       'Say a line aloud in your voice through the person\'s speakers, or only synthesize it when silent is true. '
-      + 'Use it when the person asks for voice, when this line needs a specific emotion or voice, or when automatic reading is off. '
+      + 'Use it when the person asks for voice, or when this line needs a specific emotion or voice. '
       + 'It only makes sound; the visible reply still goes through the channel\'s own send tool. '
       + 'When the speech service supports paralinguistic tags, keep them inline in the text: [Laughter], [Sigh], [Breathing], [Uhm], [Question-ei] and the like are performed, not read out.',
     tags: ['speak'],
@@ -33,7 +33,7 @@ export const VOICE_TOOL_DECLS: readonly ToolSpec[] = [
   {
     name: 'voice_style',
     description:
-      'Read or change the standing voice style used by automatic reading. Call with values to change them; call with no arguments to read the current style. '
+      'Read or change the standing voice style used by later voice lines. Call with values to change them; call with no arguments to read the current style. '
       + 'Changes are saved to the World configuration and apply to later lines.',
     tags: ['write'],
     parameters: {

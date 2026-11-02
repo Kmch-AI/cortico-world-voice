@@ -2,12 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { EventEnvelope, OutputTap } from 'cortico/core/types.ts';
 import type { StreamEvent } from 'cortico/protocol/open-responses/index.ts';
 import { VOICE_DEFAULTS } from '../src/config.ts';
-import {
-  EventPoller, hasKeyword, latestUserText, textOfEvent, textOfToolArgs, VoiceTap,
-} from '../src/triggers.ts';
+import { hasKeyword, latestUserText, textOfEvent, VoiceTap } from '../src/triggers.ts';
 import { FakeHost } from './helpers/fake-host.ts';
 
-const cfg = { ...VOICE_DEFAULTS };
+const keywords = VOICE_DEFAULTS.explicitKeywords;
 
 function event(patch: Record<string, unknown>): StreamEvent {
   return { type: 'x', ...patch } as unknown as StreamEvent;
@@ -15,7 +13,6 @@ function event(patch: Record<string, unknown>): StreamEvent {
 
 function tapOf(seen: Array<{ text: string; source: string }>, onAbort?: () => void): OutputTap {
   return new VoiceTap({
-    cfg: () => cfg,
     onText: (text, source) => seen.push({ text, source }),
     onAbort,
   });
@@ -70,44 +67,6 @@ describe('VoiceTap', () => {
     expect(seen).toEqual([{ text: '好。', source: 'text' }]);
   });
 
-  it('指定工具的参数被当作正文', () => {
-    const seen: Array<{ text: string; source: string }> = [];
-    const tap = tapOf(seen);
-    tap.onEvent(event({
-      type: 'response.output_item.done',
-      item: { type: 'function_call', name: 'pet_say', arguments: '{"script":"【笑】你好"}' },
-    }));
-    expect(seen).toEqual([{ text: '【笑】你好', source: 'tool:pet_say' }]);
-  });
-
-  it('只给参数结束事件时也能认出工具名,且不重复', () => {
-    const seen: Array<{ text: string; source: string }> = [];
-    const tap = tapOf(seen);
-    tap.onEvent(event({ type: 'response.output_item.added', output_index: 0, item: { type: 'function_call', name: 'pet_say' } }));
-    tap.onEvent(event({ type: 'response.function_call_arguments.done', output_index: 0, arguments: '{"script":"你好"}' }));
-    tap.onEvent(event({ type: 'response.output_item.done', output_index: 0, item: { type: 'function_call', name: 'pet_say', arguments: '{"script":"你好"}' } }));
-    expect(seen).toEqual([{ text: '你好', source: 'tool:pet_say' }]);
-  });
-
-  it('参数结束事件为空时,等完整 item 再交出去', () => {
-    const seen: Array<{ text: string; source: string }> = [];
-    const tap = tapOf(seen);
-    tap.onEvent(event({ type: 'response.output_item.added', output_index: 0, item: { type: 'function_call', name: 'pet_say' } }));
-    tap.onEvent(event({ type: 'response.function_call_arguments.done', output_index: 0, arguments: '' }));
-    tap.onEvent(event({ type: 'response.output_item.done', output_index: 0, item: { type: 'function_call', name: 'pet_say', arguments: '{"script":"你好"}' } }));
-    expect(seen).toEqual([{ text: '你好', source: 'tool:pet_say' }]);
-  });
-
-  it('voice_ 自己的工具不再触发朗读', () => {
-    const seen: Array<{ text: string; source: string }> = [];
-    const tap = tapOf(seen);
-    tap.onEvent(event({
-      type: 'response.output_item.done',
-      item: { type: 'function_call', name: 'voice_speak', arguments: '{"text":"你好"}' },
-    }));
-    expect(seen).toEqual([]);
-  });
-
   it('取消时回调', () => {
     let aborted = 0;
     const tap = tapOf([], () => { aborted += 1; });
@@ -116,14 +75,7 @@ describe('VoiceTap', () => {
   });
 });
 
-describe('工具参数与事件正文', () => {
-  it('按顺序找正文', () => {
-    expect(textOfToolArgs('{"script":"台词","text":"正文"}')).toBe('台词');
-    expect(textOfToolArgs('{"text":"正文"}')).toBe('正文');
-    expect(textOfToolArgs('not json')).toBe('');
-    expect(textOfToolArgs('{"n":1}')).toBe('');
-  });
-
+describe('事件正文', () => {
   it('优先 meta.body', () => {
     const e = { text: '[12:00] 甲: hi', meta: { body: 'hi' } } as unknown as EventEnvelope;
     expect(textOfEvent(e)).toBe('hi');
@@ -141,8 +93,8 @@ describe('显式关键词', () => {
       ],
     } as unknown as typeof host.store;
     expect(latestUserText(host, 120, now)).toBe('念给我听');
-    expect(hasKeyword('念给我听', cfg.explicitKeywords)).toBe(true);
-    expect(hasKeyword('今天天气不错', cfg.explicitKeywords)).toBe(false);
+    expect(hasKeyword('念给我听', keywords)).toBe(true);
+    expect(hasKeyword('今天天气不错', keywords)).toBe(false);
   });
 
   it('控制台的 internal 操作员消息也算,自录不算', () => {
@@ -168,34 +120,5 @@ describe('显式关键词', () => {
       ],
     } as unknown as typeof host.store;
     expect(latestUserText(host, 120, now)).toBe('');
-  });
-});
-
-describe('EventPoller', () => {
-  it('只处理启动之后的新事件,跳过自己的事件', async () => {
-    const host = new FakeHost();
-    let cursor = 5;
-    const events: EventEnvelope[] = [];
-    host.store = {
-      ...host.store,
-      latestCursor: () => cursor,
-      range: (q: { fromCursor?: number }) => events.filter((e) => e.cursor >= (q.fromCursor ?? 0)),
-    } as unknown as typeof host.store;
-    const seen: string[] = [];
-    const poller = new EventPoller({
-      host,
-      types: new Set(['desktop-pet.self']),
-      onText: (text) => seen.push(text),
-      intervalMs: 5,
-      log: () => {},
-    });
-    poller.start();
-    events.push(
-      { cursor: 6, type: 'desktop-pet.self', ts: '', source: 'pet', origin: 'internal', text: '新气泡' },
-      { cursor: 7, type: 'desktop-pet.self', ts: '', source: 'voice', origin: 'internal', text: '自己' },
-    );
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    poller.stop();
-    expect(seen).toEqual(['新气泡']);
   });
 });

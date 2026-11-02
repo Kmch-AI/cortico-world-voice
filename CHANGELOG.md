@@ -1,3 +1,10 @@
+## 0.4.0
+
+- 删除概率触发：不再有 `autoSpeak`、`autoProbability`、`autoFromText`、`autoTools`、`autoEvents`，也不再轮询事件或从工具参数自动找正文。
+- 语音只在三种显式路径出声：`voice_speak` 工具、最近用户消息命中 `explicitKeywords`、正文里的 `<tts>…</tts>`。`voice_style` 仍影响后续语音。
+- 环境提示词、工具说明、README 与配置页同步去掉自动朗读与概率文案；旧配置里的被删字段会被忽略。
+- 这是破坏性行为变更：升级后普通回复不再随机朗读。需要出声的调用方应改用 `voice_speak`，或在消息里明确要求语音。
+
 ## 0.3.2
 
 - IndexTTS2 的模型提示词明确:`emotion` / `instruct` 传自然语言,由服务映射到 `emotion_text`;不要在正文写 `emotion_text` 或方括号标签。服务 0.4.2 起这两个 options 不再由模型页覆盖。

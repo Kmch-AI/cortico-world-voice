@@ -1,8 +1,8 @@
 {
   "name": "@kmchai/cortico-world-voice",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "type": "module",
-  "description": "Cortico World: voice tools, probabilistic reading, emotion and paralinguistic tags, text filtering and local playback; speech is synthesized by the Kmch AI service over HTTP",
+  "description": "Cortico World: voice tools, explicit semantic speech, emotion and paralinguistic tags, text filtering and local playback; speech is synthesized by the Kmch AI service over HTTP",
   "author": "kmchai",
   "license": "MIT",
   "repository": {
@@ -35,11 +35,11 @@
     "locales": {
       "zh": {
         "displayName": "Kmch AI · 语音",
-        "description": "语音 World:工具、概率朗读、情绪与副语言标签、文本过滤、本机播放;协议与 HTTP 服务由 Kmch AI · 服务提供。"
+        "description": "语音 World:语音工具、显式语义朗读、情绪与副语言标签、文本过滤、本机播放;协议与 HTTP 服务由 Kmch AI · 服务提供。"
       },
       "en": {
         "displayName": "Kmch AI · Voice",
-        "description": "Voice World: tools, probabilistic reading, emotion and paralinguistic tags, text filtering and local playback; the Kmch AI service provides the protocol and HTTP API."
+        "description": "Voice World: voice tools, explicit semantic speech, emotion and paralinguistic tags, text filtering and local playback; the Kmch AI service provides the protocol and HTTP API."
       }
     },
     "tags": [

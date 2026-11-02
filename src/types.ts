@@ -46,14 +46,6 @@ export interface VoiceConfigSection {
   paralinguistic: ParalinguisticMode;
 
   // 触发
-  autoSpeak: boolean;
-  /** 自动朗读的概率,0–1。显式请求与工具调用不受它限制。 */
-  autoProbability: number;
-  autoFromText: boolean;
-  /** 逗号分隔的工具名;这些工具的参数会被当作要念的正文。 */
-  autoTools: string;
-  /** 逗号分隔的事件类型;这些事件的正文会被念出来。 */
-  autoEvents: string;
   explicitTrigger: boolean;
   explicitKeywords: string;
   /** 往回看多少秒内的用户消息算「刚才」。 */

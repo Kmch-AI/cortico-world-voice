@@ -12,7 +12,7 @@ import {
 export interface FilteredSpeech {
   /** 过滤后的朗读文本;空串表示没有可念的内容。 */
   text: string;
-  /** 原文用 `<tts>` 指定了要念的段落;这种请求不受概率限制。 */
+  /** 原文用 `<tts>` 指定了要念的段落;这种请求直接朗读。 */
   forced: boolean;
   /** 文本里的情绪标记;没有时为空。 */
   emotion: string;

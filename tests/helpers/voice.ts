@@ -139,7 +139,6 @@ export function testWorld(patch: Partial<VoiceConfigSection> = {}, deps: Partial
     deps: {
       service,
       createPlayer: () => player,
-      rng: () => 0,
       now: () => 1_700_000_000_000,
       sleep: async () => {},
       ...deps,

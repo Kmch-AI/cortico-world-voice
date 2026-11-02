@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "voice_speak",
-      "description": "Say a line aloud in your voice through the person's speakers, or only synthesize it when silent is true. Use it when the person asks for voice, when this line needs a specific emotion or voice, or when automatic reading is off. It only makes sound; the visible reply still goes through the channel's own send tool. When the speech service supports paralinguistic tags, keep them inline in the text: [Laughter], [Sigh], [Breathing], [Uhm], [Question-ei] and the like are performed, not read out.",
+      "description": "Say a line aloud in your voice through the person's speakers, or only synthesize it when silent is true. Use it when the person asks for voice, or when this line needs a specific emotion or voice. It only makes sound; the visible reply still goes through the channel's own send tool. When the speech service supports paralinguistic tags, keep them inline in the text: [Laughter], [Sigh], [Breathing], [Uhm], [Question-ei] and the like are performed, not read out.",
       "parameters": {
         "type": "object",
         "additionalProperties": false,
@@ -68,7 +68,7 @@
     },
     {
       "name": "voice_style",
-      "description": "Read or change the standing voice style used by automatic reading. Call with values to change them; call with no arguments to read the current style. Changes are saved to the World configuration and apply to later lines.",
+      "description": "Read or change the standing voice style used by later voice lines. Call with values to change them; call with no arguments to read the current style. Changes are saved to the World configuration and apply to later lines.",
       "parameters": {
         "type": "object",
         "additionalProperties": false,
@@ -100,8 +100,8 @@
         "write"
       ],
       "summary": {
-        "zh": "读或改自动朗读使用的长期音色与情绪。",
-        "en": "Read or change the standing voice style used by automatic reading."
+        "zh": "读或改后续语音使用的长期音色与情绪。",
+        "en": "Read or change the standing voice style used by later voice lines."
       }
     }
   ],
@@ -126,7 +126,7 @@
       "key": "worlds.voice.envPrompt",
       "title": "语音 · 环境提示词",
       "role": "envPrompt",
-      "content": "语音由 Voice 提供:它只把文字变成声音,从对方的扬声器念出来,不负责把回复发到聊天渠道;可见的回复仍然走渠道自己的发送工具。\n\n自动朗读现在是 {{voice.auto}}(音色 {{voice.voice}},情绪 {{voice.emotion}},指令 {{voice.instruct}})。自动朗读开着时,普通回复不必调用语音工具;关着时,想出声就调用 voice_speak。\n\n需要出声的时候:\n- 对方明确要语音、要你念出来、要听你的声音时,调用 voice_speak,把要念的正文放进 text。它会绕过概率,必定出声。\n- 这一句需要特定情绪、语气、音色或语速时,调用 voice_speak 并填对应参数。想让同样的语气之后一直生效,调用 voice_style;它影响之后的自动朗读。\n- 某一句只用于别的渠道(例如语音条),不要在本机播放:voice_speak 带 silent: true,音频随回执交给渠道。\n- 对方让你安静、停下时调用 voice_hush。\n\n文本规则:\n- text 只放真正要念的正文,不要放动作描写、Markdown、代码、网址或解释。\n- {{voice.modelPrompt}}\n- 不要把控制标记写进可见的回复正文;语音参数只放在工具调用里。\n"
+      "content": "语音由 Voice 提供:它只把文字变成声音,从对方的扬声器念出来,不负责把回复发到聊天渠道;可见的回复仍然走渠道自己的发送工具。\n\n当前默认音色是 {{voice.voice}},情绪是 {{voice.emotion}},指令是 {{voice.instruct}}。普通回复不会自己出声,需要语音时明确调用 voice_speak。\n\n需要出声的时候:\n- 对方明确要语音、要你念出来、要听你的声音时,调用 voice_speak,把要念的正文放进 text。\n- 这一句需要特定情绪、语气、音色或语速时,调用 voice_speak 并填对应参数。想让同样的语气之后一直生效,调用 voice_style;它影响之后的语音。\n- 某一句只用于别的渠道(例如语音条),不要在本机播放:voice_speak 带 silent: true,音频随回执交给渠道。\n- 对方让你安静、停下时调用 voice_hush。\n\n文本规则:\n- text 只放真正要念的正文,不要放动作描写、Markdown、代码、网址或解释。\n- {{voice.modelPrompt}}\n- 不要把控制标记写进可见的回复正文;语音参数只放在工具调用里。\n"
     }
   ]
 }

@@ -1,9 +1,9 @@
 # @kmchai/cortico-world-voice
 
-Cortico 的语音 World:把回复念出来。触发、概率、文本过滤、情绪语义、队列与播放留在这里;合成经 [Kmch AI · 服务](https://github.com/Kmch-AI/cortico-world-service) 的 HTTP 网关完成。
+Cortico 的语音 World:把回复念出来。触发、文本过滤、情绪语义、队列与播放留在这里;合成经 [Kmch AI · 服务](https://github.com/Kmch-AI/cortico-world-service) 的 HTTP 网关完成。
 
 - **语音工具**:`voice_speak`、`voice_hush`、`voice_style`。
-- **三条触发路径**:工具显式调用、用户语义请求(「念给我听」)、按概率自动朗读。
+- **三条显式触发路径**:工具调用、用户语义请求(「念给我听」)、正文里的 `<tts>…</tts>`;不掷概率,也不会自动朗读普通回复。
 - **情绪与标签**:自然语言指令、分类情绪、语速、副语言标签(`[Laughter]`、`[Sigh]` 等)。
 - **文本过滤**:Markdown、代码、网址、动作标记、emoji、指定符号都不念。
 - **出口可拆**:本机播放、发 `tts.voice` 事件交给播放插件、或只合成并交回音频附件。
@@ -34,9 +34,7 @@ corepack pnpm add "D:/path/to/cortico-world-voice" --ignore-workspace
       "serviceUrl": "http://127.0.0.1:9883",
       "serviceTokenSecret": "",
       "model": "ming3-tts",
-      "playback": "local",
-      "autoSpeak": true,
-      "autoProbability": 0.3
+      "playback": "local"
     }
   }
 }
@@ -52,8 +50,8 @@ World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回�
 
 | 工具 | 作用 |
 |---|---|
-| `voice_speak` | 念一句;可带 `emotion`、`instruct`、`voice`、`speed`、`silent`。不受概率限制。 |
-| `voice_style` | 读或改长期风格(情绪、指令、音色、语速),写回 `worlds.voice`,影响之后的自动朗读。 |
+| `voice_speak` | 念一句;可带 `emotion`、`instruct`、`voice`、`speed`、`silent`。 |
+| `voice_style` | 读或改长期风格(情绪、指令、音色、语速),写回 `worlds.voice`,影响之后的语音。 |
 | `voice_hush` | 立刻停声,清空排队。 |
 
 `silent: true` 只合成、不在本机播放,音频随工具回执交给渠道,用于语音条这类出口。
@@ -62,22 +60,13 @@ World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回�
 
 | 路径 | 行为 |
 |---|---|
-| `voice_speak` 工具 | 立即念;不受概率限制。可带 `emotion`、`instruct`、`voice`、`speed`、`silent`。 |
-| 用户语义请求 | 最近 `explicitWindowSec` 秒内的外部消息含 `explicitKeywords`(默认「语音,声音,发语音,念给我听,读给我听,voice,tts」)时必定朗读。 |
-| 自动朗读 | 助手正文、指定工具参数、指定事件三类来源,按 `autoProbability` 掷一次。 |
-| `<tts>…</tts>` | 只念标签内文,并强制朗读。标签会出现在可见文字里;渠道可见时优先用工具触发。 |
+| `voice_speak` 工具 | 立即念;可带 `emotion`、`instruct`、`voice`、`speed`、`silent`。 |
+| 用户语义请求 | 最近 `explicitWindowSec` 秒内的外部消息含 `explicitKeywords`(默认「语音,声音,发语音,念给我听,读给我听,voice,tts」)时朗读这一轮的纯文本正文。 |
+| `<tts>…</tts>` | 只念标签内文。标签会出现在可见文字里;渠道可见时优先用工具触发。 |
 
-自动来源:
+同一段文字 5 秒内只念一次。没有概率自动朗读;普通回复不会自己出声。
 
-- `autoFromText`:一轮里只有正文、没有函数调用时,念这一轮的正文。
-- `autoTools`:这些工具的参数会被当作正文。默认 `pet_say, pet_ask, console_send`,取 `script` / `question` / `text` / `content` / `message` / `body` 里第一个字符串。
-- `autoEvents`:轮询事件库,念这些事件类型的 `meta.body` 或正文。
-
-同一段文字 5 秒内只念一次。概率按「一段话」掷,不按句掷。
-
-只想响应工具与显式请求、不要随机朗读:保留 `autoSpeak: true`,把 `autoProbability` 设为 `0`。把 `autoSpeak` 整个关掉会让 tap 不再挂载,显式关键词也就看不到正文了;这时只保留 `voice_speak` 工具触发。
-
-自动朗读依赖 Persona 把已挂载 World 的 `outputTap()` 扇进主 session;`cormini`、Coopanion 与 `Kmch AI · 网关` 0.1.1 起都这样做。只想要工具触发时,把 `autoSpeak` 关掉即可。模型说完正文再调 `end_turn` 不影响朗读;与搜索等实际工具同轮的中间正文仍不念。
+显式关键词依赖 Persona 把已挂载 World 的 `outputTap()` 扇进主 session;`cormini`、Coopanion 与 `Kmch AI · 网关` 0.1.1 起都这样做。模型说完正文再调 `end_turn` 不影响判定;与搜索等实际工具同轮的中间正文仍不念。`explicitTrigger: false` 会关掉关键词路径,但 `<tts>` 与 `voice_speak` 仍可用。
 
 ## 情绪、语速与标签
 
@@ -131,6 +120,14 @@ OpenAI 兼容条目把 `instructions` / `emotion` / `speed` 直接放进请求�
 
 语音不唱歌:0.1.x 的 `voice_sing`、`【唱】` 前缀与 `sing*` 配置已删除。唱歌由服务的 `/v1/audio/sing` 和网关/唱歌插件接入。
 
+## 从 0.3.x 迁移
+
+| 0.3.x | 0.4.0 |
+|---|---|
+| `autoSpeak` / `autoProbability` / `autoFromText` / `autoTools` / `autoEvents` | 删除,配置里残留也会被忽略;语音不再自动朗读普通回复。 |
+| 自动朗读 | 改用 `voice_speak`;或在消息里明确要求语音,让 `explicitKeywords` 命中。 |
+| `explicitTrigger` / `explicitKeywords` / `explicitWindowSec` | 保留。 |
+
 ## 从 0.1.x 迁移
 
 | 0.1.x | 0.2.0 |
@@ -152,7 +149,7 @@ pnpm smoke:player out.wav                 # 本机播放器,音量 0
 pnpm smoke:chain http://127.0.0.1:9883    # 触发→过滤→经服务合成→tts.voice 全链路
 ```
 
-装进 Cortico 后应看到:World 页多一张「Kmch AI · 语音」卡,服务灯、队列灯与 `service` / `model` / `voice` 徽标;「模型」tab 能选模型与音色,按模型调整声音与情绪,并按服务参数渲染字段、保存;服务在线时灯亮;让 bot 调 `voice_speak` 能听见;说「念给我听」会绕过概率;`playback: event` 时时间线出现 `tts.voice`。
+装进 Cortico 后应看到:World 页多一张「Kmch AI · 语音」卡,服务灯、队列灯与 `service` / `model` / `voice` 徽标;「模型」tab 能选模型与音色,按模型调整声音与情绪,并按服务参数渲染字段、保存;服务在线时灯亮;让 bot 调 `voice_speak` 能听见;说「念给我听」会朗读纯文本正文;`playback: event` 时时间线出现 `tts.voice`。
 
 ## 许可
 

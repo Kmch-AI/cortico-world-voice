@@ -18,10 +18,6 @@ const cfg: VoiceConfigSection = {
   enabled: true,
   serviceUrl,
   playback: 'event',
-  autoSpeak: true,
-  autoProbability: 1,
-  autoFromText: true,
-  autoTools: '',
 };
 const host = new FakeHost();
 const world = new VoiceWorld({
@@ -36,9 +32,8 @@ const world = new VoiceWorld({
 try {
   await world.start(host);
   const tap = world.outputTap();
-  if (!tap) throw new Error('outputTap is undefined');
   const started = Date.now();
-  tap.onEvent({ type: 'response.output_text.delta', delta: '你好，这是一次完整链路测试。' } as never);
+  tap.onEvent({ type: 'response.output_text.delta', delta: '<tts>你好，这是一次完整链路测试。</tts>' } as never);
   tap.onRoundEnd?.();
 
   const deadline = Date.now() + 60_000;

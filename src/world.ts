@@ -24,7 +24,7 @@ import { ServiceClient, type SpeechService } from './service.ts';
 import { splitSpeech, truncateSpeech } from './speech/chunk.ts';
 import { buildInstruct, resolveStyle } from './speech/style.ts';
 import { filterSpeech } from './speech/text.ts';
-import { EventPoller, eventTypes, hasKeyword, latestUserText, splitList, VoiceTap } from './triggers.ts';
+import { hasKeyword, latestUserText, VoiceTap } from './triggers.ts';
 import { VOICE_TOOL_DECLS } from './tools.ts';
 import type {
   EmotionMode, ParalinguisticMode, ServiceHealth, TtsAudio, TtsRequest, VoiceConfigSection,
@@ -39,7 +39,6 @@ const HEALTH_TTL_MS = 15_000;
 export interface VoiceWorldDeps {
   fetch: typeof fetch;
   createPlayer(log: Logger): AudioPlayer | null;
-  rng(): number;
   now(): number;
   sleep(ms: number): Promise<void>;
   /** 测试用:替换服务客户端。 */
@@ -76,7 +75,6 @@ function defaultDeps(): VoiceWorldDeps {
   return {
     fetch: ((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => fetch(input, init)) as typeof fetch,
     createPlayer,
-    rng: () => Math.random(),
     now: () => Date.now(),
     sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
@@ -124,7 +122,6 @@ export class VoiceWorld implements World {
   private readonly tap: VoiceTap;
   private readonly service: SpeechService;
   private host: WorldHost | null = null;
-  private poller: EventPoller | null = null;
   private healthTimer: NodeJS.Timeout | null = null;
   private started = false;
   private tempDir = '';
@@ -157,7 +154,6 @@ export class VoiceWorld implements World {
       onError: (job, message) => { void this.pushFailure(message, { source: job.source }); },
     });
     this.tap = new VoiceTap({
-      cfg: () => this.cfg,
       onText: (text, source) => this.consider(text, source),
       onAbort: () => this.queue.hush(),
     });
@@ -175,7 +171,6 @@ export class VoiceWorld implements World {
   envPromptVars(): Record<string, string> {
     const cfg = this.styled;
     return {
-      'voice.auto': this.cfg.autoSpeak ? `${Math.round(this.cfg.autoProbability * 100)}%` : 'off',
       'voice.voice': cfg.voice || 'default',
       'voice.emotion': cfg.defaultEmotion || 'neutral',
       'voice.instruct': cfg.defaultInstruct || 'none',
@@ -247,7 +242,6 @@ export class VoiceWorld implements World {
         path: ENV_PROMPT_FILE,
         role: 'envPrompt',
         vars: [
-          { name: 'voice.auto', description: 'Automatic reading probability, or off.' },
           { name: 'voice.voice', description: 'Current voice id.' },
           { name: 'voice.emotion', description: 'Standing emotion.' },
           { name: 'voice.instruct', description: 'Standing direction.' },
@@ -423,9 +417,7 @@ export class VoiceWorld implements World {
   }
 
   outputTap() {
-    const cfg = this.cfg;
-    if (!cfg.autoSpeak) return undefined;
-    if (!cfg.autoFromText && splitList(cfg.autoTools).length === 0) return undefined;
+    // 概率触发已删除;旁路只用于显式关键词与 <tts> 的判定。
     return this.tap;
   }
 
@@ -435,14 +427,13 @@ export class VoiceWorld implements World {
     this.log.info('语音 World 启动', {
       service: serviceHost(this.cfg.serviceUrl),
       playback: this.cfg.playback,
-      auto: this.cfg.autoSpeak ? this.cfg.autoProbability : 'off',
+      explicit: this.cfg.explicitTrigger,
     });
     if (this.cfg.playback === 'local') {
       void this.player?.warm(this.ensureTempDir()).catch((error: unknown) => {
         this.log.warn('播放器预热失败', { err: error instanceof Error ? error.message : String(error) });
       });
     }
-    this.syncPoller();
     void this.probe();
     this.healthTimer = setInterval(() => { void this.probe(); }, HEALTH_INTERVAL_MS);
     this.healthTimer.unref?.();
@@ -452,8 +443,6 @@ export class VoiceWorld implements World {
     this.started = false;
     if (this.healthTimer) clearInterval(this.healthTimer);
     this.healthTimer = null;
-    this.poller?.stop();
-    this.poller = null;
     await this.queue.close();
     if (this.tempDir) {
       try { rmSync(this.tempDir, { recursive: true, force: true }); } catch { /* 临时目录 */ }
@@ -478,8 +467,6 @@ export class VoiceWorld implements World {
   private consider(raw: string, source: string): void {
     if (!this.started) return;
     const cfg = this.cfg;
-    if (!cfg.autoSpeak) return;
-
     const filtered = filterSpeech(raw, this.styled);
     if (!filtered.text) return;
 
@@ -487,14 +474,14 @@ export class VoiceWorld implements World {
       ? latestUserText(this.host!, cfg.explicitWindowSec, this.deps.now())
       : '';
     const explicit = filtered.forced || (cfg.explicitTrigger && hasKeyword(userText, cfg.explicitKeywords));
-    if (!explicit && this.deps.rng() >= cfg.autoProbability) return;
+    if (!explicit) return;
     if (!this.fresh(filtered.text)) return;
 
     this.enqueue(filtered.text, {
       source,
       ...(filtered.emotion ? { emotion: filtered.emotion } : {}),
     });
-    this.log.debug('自动朗读', { source, explicit, chars: [...filtered.text].length });
+    this.log.debug('显式朗读', { source, chars: [...filtered.text].length });
   }
 
   private enqueue(text: string, opts: EnqueueOptions): ReturnType<SpeechQueue['enqueue']> | null {
@@ -611,8 +598,7 @@ export class VoiceWorld implements World {
   private styleSummary(): string {
     const cfg = this.styled;
     return `Voice: ${cfg.voice || 'default'}; emotion: ${cfg.defaultEmotion || 'neutral'}; `
-      + `direction: ${cfg.defaultInstruct || 'none'}; speed: ${cfg.speed}; `
-      + `automatic: ${this.cfg.autoSpeak ? `${Math.round(this.cfg.autoProbability * 100)}%` : 'off'}.`;
+      + `direction: ${cfg.defaultInstruct || 'none'}; speed: ${cfg.speed}.`;
   }
 
   private spokenOutcome(audio: TtsAudio | undefined, seconds: number, silent: boolean): ToolOutcome {
@@ -708,7 +694,7 @@ export class VoiceWorld implements World {
   private async pushFailure(detail: string, meta: Record<string, unknown>): Promise<void> {
     const host = this.host;
     if (!host) return;
-    // 服务长时间不可用时,自动朗读会每句都失败;事件留一条,日志照常。
+    // 服务长时间不可用时,连续失败会反复出现;事件留一条,日志照常。
     const now = this.deps.now();
     if (now - this.lastFailureAt < 30_000) return;
     this.lastFailureAt = now;
@@ -758,23 +744,6 @@ export class VoiceWorld implements World {
     if (!this.probing && (this.serviceState === null || now - this.serviceState.at > HEALTH_TTL_MS)) {
       void this.probe();
     }
-  }
-
-  private syncPoller(): void {
-    const types = eventTypes(this.cfg);
-    if (types.size === 0) {
-      this.poller?.stop();
-      this.poller = null;
-      return;
-    }
-    if (this.poller) return;
-    this.poller = new EventPoller({
-      host: this.host!,
-      types,
-      onText: (text, source) => this.consider(text, source),
-      log: (message, data) => this.log.warn(message, data),
-    });
-    this.poller.start();
   }
 
   private ensureTempDir(): string {

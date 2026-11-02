@@ -176,11 +176,31 @@ describe('Voice World', () => {
     expect(VOICE.configOptions).toBeUndefined();
   });
 
+  it('触发组只剩显式请求字段,不再有概率或自动来源', async () => {
+    const h = make();
+    await started(h);
+    const ui = h.world.webUi('zh');
+    const triggers = ui.config?.find((group) => group.id === 'world:voice-triggers');
+    expect(Object.keys(triggers?.schema.properties ?? {})).toEqual([
+      'worlds.voice.explicitTrigger',
+      'worlds.voice.explicitKeywords',
+      'worlds.voice.explicitWindowSec',
+      'worlds.voice.minChars',
+      'worlds.voice.maxChars',
+    ]);
+    expect('autoSpeak' in VOICE_DEFAULTS).toBe(false);
+    expect('autoProbability' in VOICE_DEFAULTS).toBe(false);
+    expect('autoFromText' in VOICE_DEFAULTS).toBe(false);
+    expect('autoTools' in VOICE_DEFAULTS).toBe(false);
+    expect('autoEvents' in VOICE_DEFAULTS).toBe(false);
+  });
+
   it('环境提示词变量带当前模型的写法', async () => {
     const ming = make({ model: 'ming3-tts' });
     await started(ming);
     expect(ming.world.envPromptVars()['voice.modelPrompt']).toBe(modelPrompt('ming3-tts'));
     expect(ming.world.envPromptVars()['voice.modelPrompt']).toContain('[Laughter]');
+    expect(ming.world.envPromptVars()['voice.auto']).toBeUndefined();
 
     const index = make({ model: 'index-tts2' });
     await started(index);
@@ -242,7 +262,8 @@ describe('Voice World', () => {
     await started(h);
     const tool = toolOf(h, 'voice_style');
     const read = await tool.handler({}, {} as ToolCallContext) as { text: string };
-    expect(read.text).toContain('automatic:');
+    expect(read.text).toContain('Voice:');
+    expect(read.text).not.toContain('automatic');
     expect(read.text).not.toContain('singing:');
     await tool.handler({ emotion: '开心', voice: 'v9' }, {} as ToolCallContext);
     expect(h.cfg.defaultEmotion).toBe('开心');
@@ -257,18 +278,8 @@ describe('Voice World', () => {
     expect(h.player.hushed).toBeGreaterThan(0);
   });
 
-  it('自动朗读:纯文本轮按概率触发', async () => {
-    const h = make({ autoProbability: 1, playback: 'none' });
-    await started(h);
-    const tap = h.world.outputTap()!;
-    tap.onEvent(event({ type: 'response.output_text.delta', delta: '今天天气不错。' }));
-    tap.onRoundEnd?.();
-    await settle(10);
-    expect(h.service.calls.map((c) => c.text)).toEqual(['今天天气不错。']);
-  });
-
-  it('概率为 0 时不自动朗读', async () => {
-    const h = make({ autoProbability: 0, playback: 'none' });
+  it('没有显式请求时纯文本不朗读', async () => {
+    const h = make({ playback: 'none' });
     await started(h);
     const tap = h.world.outputTap()!;
     tap.onEvent(event({ type: 'response.output_text.delta', delta: '今天天气不错。' }));
@@ -277,8 +288,8 @@ describe('Voice World', () => {
     expect(h.service.calls).toEqual([]);
   });
 
-  it('最近消息里有显式关键词时绕过概率', async () => {
-    const h = make({ autoProbability: 0, playback: 'none' });
+  it('最近消息里有显式关键词时朗读', async () => {
+    const h = make({ playback: 'none' });
     const host = new FakeHost();
     const ts = new Date(1_700_000_000_000).toISOString();
     host.store = {
@@ -293,18 +304,14 @@ describe('Voice World', () => {
     expect(h.service.calls.map((c) => c.text)).toEqual(['好呀。']);
   });
 
-  it('指定工具的参数触发朗读,同样的文字不重复念', async () => {
-    const h = make({ autoProbability: 1, playback: 'none' });
+  it('<tts> 包裹的正文直接朗读', async () => {
+    const h = make({ playback: 'none' });
     await started(h);
     const tap = h.world.outputTap()!;
-    const call = event({
-      type: 'response.output_item.done',
-      item: { type: 'function_call', name: 'pet_say', arguments: '{"script":"你好呀"}' },
-    });
-    tap.onEvent(call);
-    tap.onEvent(call);
+    tap.onEvent(event({ type: 'response.output_text.delta', delta: '前半句<tts>只念这里</tts>后半句' }));
+    tap.onRoundEnd?.();
     await settle(10);
-    expect(h.service.calls.map((c) => c.text)).toEqual(['你好呀']);
+    expect(h.service.calls.map((c) => c.text)).toEqual(['只念这里']);
   });
 
   it('instruct 模式只发 instructions,categorical 只发 emotion,basic 只发 speed', async () => {
