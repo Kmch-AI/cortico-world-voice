@@ -1,3 +1,7 @@
+## 0.4.1
+
+- 模型参数里的浮点输入改为 `step="0.01"`，0–1 的强度、概率等参数用右侧步进器可精确到 0.01；整数参数仍是 1。
+
 ## 0.4.0
 
 - 删除概率触发：不再有 `autoSpeak`、`autoProbability`、`autoFromText`、`autoTools`、`autoEvents`，也不再轮询事件或从工具参数自动找正文。

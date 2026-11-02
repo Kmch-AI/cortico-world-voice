@@ -87,7 +87,8 @@ function makeControl(
       const input = ui.input({ type: 'number', value: numberValue(value) });
       if (param.min !== undefined) input.min = String(param.min);
       if (param.max !== undefined) input.max = String(param.max);
-      input.step = param.type === 'int' ? '1' : 'any';
+      // 浮点参数(尤其是 0–1 的强度/概率)用 0.01 步进,右侧调节才够细。
+      input.step = param.type === 'int' ? '1' : '0.01';
       field.append(input);
       read = () => {
         const raw = input.value.trim();
