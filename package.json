@@ -1,6 +1,6 @@
 {
   "name": "@kmchai/cortico-world-voice",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "description": "Cortico World: voice tools, probabilistic reading, emotion and paralinguistic tags, text filtering and local playback; speech is synthesized by the Kmch AI service over HTTP",
   "author": "kmchai",

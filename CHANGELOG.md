@@ -1,3 +1,7 @@
+## 0.3.2
+
+- IndexTTS2 的模型提示词明确:`emotion` / `instruct` 传自然语言,由服务映射到 `emotion_text`;不要在正文写 `emotion_text` 或方括号标签。服务 0.4.2 起这两个 options 不再由模型页覆盖。
+
 ## 0.3.1
 
 - 自动朗读不再把 `end_turn` 当成实质工具调用。模型说完正文再调 `end_turn` 结束这一轮时,正文照常按概率朗读;仍会压掉与 `web_search` 等实际工具同轮出现的中间正文。

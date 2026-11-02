@@ -28,7 +28,7 @@ const INDEXTTS2: ModelInfo = {
   match: ['index-tts2', 'index_tts2', 'index-tts2.5', 'index_tts2_5', '2.5'],
   label: 'IndexTTS2',
   tags: false,
-  prompt: '情绪用自然语言(emotion_text),不要写 [Laughter] 这类方括号标签;采样/时长参数在语音模型页配置,不要写进正文.',
+  prompt: '情绪用 voice_speak 的 emotion 或 instruct 传自然语言,服务会映射到 emotion_text;不要在正文写 emotion_text 或 [Laughter] 这类方括号标签。采样/时长参数在语音模型页配置,不要写进正文.',
 };
 
 const GENERIC: ModelInfo = {

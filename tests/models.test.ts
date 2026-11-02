@@ -28,7 +28,7 @@ describe('models', () => {
 
     const index = modelPrompt('index-tts2');
     expect(index).toContain('emotion_text');
-    expect(index).toContain('不要写 [Laughter]');
+    expect(index).toContain('[Laughter]');
     expect(index).not.toContain('支持 [Laughter]');
 
     const generic = modelPrompt('');

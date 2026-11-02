@@ -91,7 +91,7 @@ World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回�
 | `tags` | 不发情绪参数,只用正文标签。 | 正文标签。 |
 | `none` | 都不发。 | — |
 
-OpenAI 兼容条目把 `instructions` / `emotion` / `speed` 直接放进请求。其他模型可在服务面板里覆盖 profile 的字段映射,语音不用改配置。
+OpenAI 兼容条目把 `instructions` / `emotion` / `speed` 直接放进请求。IndexTTS2 把 `instructions` 或 `emotion` 映射成 `use_emotion_text: true` 与 `emotion_text`;这两个参数由语音的「默认情绪 / 默认表演指令」或单句 `emotion` / `instruct` 驱动,不在模型参数面板里单独出现。其他模型可在服务面板里覆盖 profile 的字段映射,语音不用改配置。
 
 `response_format` 每次都带;`model` 与 `voice` 配了才带,工具参数里的音色优先于配置默认值。
 
