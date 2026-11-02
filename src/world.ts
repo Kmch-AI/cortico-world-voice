@@ -14,12 +14,12 @@ import type {
   Logger, ToolDef, ToolOutcome, World, WorldHost, WorldLamp, WorldWebUiDecl,
 } from 'cortico/core/types.ts';
 import { nullLogger, nowIso } from 'cortico/core/util.ts';
-import { VOICE_DEFAULTS, VOICE_ID, voiceConfigGroups, voiceText } from './config.ts';
+import { modelStyle, styledConfig, VOICE_DEFAULTS, VOICE_ID, voiceConfigGroups, voiceText } from './config.ts';
 import type { AudioPlayer } from './audio/player.ts';
 import { createPlayer } from './audio/player.ts';
 import { SpeechQueue, type SpeechJob } from './audio/queue.ts';
 import { modelPrompt } from './models.ts';
-import { isPlainObject, type PanelModelState } from './panel.ts';
+import { isPlainObject, type PanelModelSetting, type PanelModelState } from './panel.ts';
 import { ServiceClient, type SpeechService } from './service.ts';
 import { splitSpeech, truncateSpeech } from './speech/chunk.ts';
 import { buildInstruct, resolveStyle } from './speech/style.ts';
@@ -27,7 +27,8 @@ import { filterSpeech } from './speech/text.ts';
 import { EventPoller, eventTypes, hasKeyword, latestUserText, splitList, VoiceTap } from './triggers.ts';
 import { VOICE_TOOL_DECLS } from './tools.ts';
 import type {
-  ServiceHealth, TtsAudio, TtsRequest, VoiceConfigSection, VoiceModel,
+  EmotionMode, ParalinguisticMode, ServiceHealth, TtsAudio, TtsRequest, VoiceConfigSection,
+  VoiceModel, VoiceModelStyle,
 } from './types.ts';
 
 const ENV_PROMPT_FILE = fileURLToPath(new URL('./ENV_PROMPT.md', import.meta.url));
@@ -142,7 +143,7 @@ export class VoiceWorld implements World {
     this.service = this.deps.service ?? new ServiceClient({
       fetch: this.deps.fetch,
       secret: (name) => this.opts.secret(name),
-      cfg: () => this.cfg,
+      cfg: () => this.styled,
     });
     this.player = this.deps.createPlayer(this.log);
     this.queue = new SpeechQueue({
@@ -166,14 +167,19 @@ export class VoiceWorld implements World {
     return this.opts.cfg;
   }
 
+  /** 当前模型的配置视图:模型专属的朗读风格盖在全局值上。 */
+  private get styled(): VoiceConfigSection {
+    return styledConfig(this.cfg, this.cfg.model);
+  }
+
   envPromptVars(): Record<string, string> {
-    const cfg = this.cfg;
+    const cfg = this.styled;
     return {
-      'voice.auto': cfg.autoSpeak ? `${Math.round(cfg.autoProbability * 100)}%` : 'off',
+      'voice.auto': this.cfg.autoSpeak ? `${Math.round(this.cfg.autoProbability * 100)}%` : 'off',
       'voice.voice': cfg.voice || 'default',
       'voice.emotion': cfg.defaultEmotion || 'neutral',
       'voice.instruct': cfg.defaultInstruct || 'none',
-      'voice.modelPrompt': modelPrompt(cfg.model),
+      'voice.modelPrompt': modelPrompt(this.cfg.model),
     };
   }
 
@@ -196,7 +202,7 @@ export class VoiceWorld implements World {
   webUi(language: Language = 'zh'): WorldWebUiDecl {
     const t = voiceText(language);
     this.maybeRefresh();
-    const cfg = this.cfg;
+    const cfg = this.styled;
     const stats = this.queue.stats();
     const serviceLamp: WorldLamp = this.serviceState === null
       ? { label: t.lampService, state: this.started ? 'loading' : 'offline' }
@@ -270,15 +276,39 @@ export class VoiceWorld implements World {
 
   private panelSnapshot(): PanelModelState {
     const cfg = this.cfg;
-    const saved = cfg.modelOptions?.[cfg.model];
+    const settings = this.panelSettings();
+    const current = settings[cfg.model];
+    const style = current?.style ?? modelStyle(cfg, cfg.model);
     return {
       model: cfg.model,
-      voice: cfg.voice,
+      voice: style.voice,
       prompt: modelPrompt(cfg.model),
-      options: isPlainObject(saved) ? { ...saved } : {},
+      prompts: Object.fromEntries(Object.keys(settings).map((id) => [id, modelPrompt(id)])),
+      options: current?.options ?? {},
+      style,
       models: this.catalog ?? [],
+      settings,
       ...(this.catalogError ? { error: this.catalogError } : {}),
     };
+  }
+
+  /** 目录里每个模型的音色、风格与参数;当前模型与已保存过设置的模型也各带一条。 */
+  private panelSettings(): Record<string, PanelModelSetting> {
+    const ids = new Set((this.catalog ?? []).map((model) => model.id));
+    if (this.cfg.model.trim()) ids.add(this.cfg.model.trim());
+    for (const id of Object.keys(this.cfg.modelStyles ?? {})) if (id.trim()) ids.add(id);
+    for (const id of Object.keys(this.cfg.modelOptions ?? {})) if (id.trim()) ids.add(id);
+    const out: Record<string, PanelModelSetting> = {};
+    for (const id of ids) {
+      const style = modelStyle(this.cfg, id);
+      const saved = this.cfg.modelOptions?.[id];
+      out[id] = {
+        voice: style.voice,
+        style,
+        options: isPlainObject(saved) ? { ...saved } : {},
+      };
+    }
+    return out;
   }
 
   private loadCatalog(selected: string): Promise<void> {
@@ -338,16 +368,58 @@ export class VoiceWorld implements World {
     const model = typeof raw.model === 'string' ? raw.model.trim() : '';
     if (!model) throw new Error(t.modelSaveModel);
     if (typeof raw.voice !== 'string') throw new Error(t.modelSaveVoice);
+    if (raw.style !== undefined && !isPlainObject(raw.style)) throw new Error(t.modelSaveStyle);
     if (!isPlainObject(raw.options)) throw new Error(t.modelSaveOptions);
 
-    const next: VoiceConfigSection['modelOptions'] = { ...(this.cfg.modelOptions ?? {}) };
+    const style = this.readModelStyle(raw.style, model, raw.voice.trim(), t.modelSaveStyle);
+    const nextStyles: VoiceConfigSection['modelStyles'] = { ...(this.cfg.modelStyles ?? {}) };
+    nextStyles[model] = style;
+
+    const nextOptions: VoiceConfigSection['modelOptions'] = { ...(this.cfg.modelOptions ?? {}) };
     // 空对象表示删掉这个模型的条目,回到服务的默认参数。
-    if (Object.keys(raw.options).length === 0) delete next[model];
-    else next[model] = { ...raw.options };
+    if (Object.keys(raw.options).length === 0) delete nextOptions[model];
+    else nextOptions[model] = { ...raw.options };
     // 配置层对对象做深合并,删掉的键不会随 patch 传播;先让活引用指向新对象再写盘。
-    this.cfg.modelOptions = next;
-    this.opts.persist({ model, voice: raw.voice.trim(), modelOptions: next });
+    this.cfg.modelStyles = nextStyles;
+    this.cfg.modelOptions = nextOptions;
+    this.opts.persist({ model, modelStyles: nextStyles, modelOptions: nextOptions });
     return this.panelSnapshot();
+  }
+
+  /** 面板传来的风格字段逐个校验;没给的字段沿用这个模型当前生效的值。 */
+  private readModelStyle(
+    raw: Record<string, unknown> | undefined,
+    model: string,
+    voice: string,
+    shapeError: string,
+  ): VoiceModelStyle {
+    const current = modelStyle(this.cfg, model);
+    if (!raw) return { ...current, voice };
+
+    const emotionModes: readonly EmotionMode[] = ['instruct', 'categorical', 'basic', 'tags', 'none'];
+    const paralinguisticModes: readonly ParalinguisticMode[] = ['auto', 'keep', 'strip'];
+    const emotionMode = raw.emotionMode ?? current.emotionMode;
+    if (typeof emotionMode !== 'string' || !emotionModes.includes(emotionMode as EmotionMode)) {
+      throw new Error(shapeError);
+    }
+    const paralinguistic = raw.paralinguistic ?? current.paralinguistic;
+    if (typeof paralinguistic !== 'string' || !paralinguisticModes.includes(paralinguistic as ParalinguisticMode)) {
+      throw new Error(shapeError);
+    }
+    const defaultEmotion = raw.defaultEmotion ?? current.defaultEmotion;
+    if (typeof defaultEmotion !== 'string') throw new Error(shapeError);
+    const defaultInstruct = raw.defaultInstruct ?? current.defaultInstruct;
+    if (typeof defaultInstruct !== 'string') throw new Error(shapeError);
+    const rawSpeed = raw.speed ?? current.speed;
+    if (typeof rawSpeed !== 'number' || !Number.isFinite(rawSpeed)) throw new Error(shapeError);
+    return {
+      voice,
+      emotionMode: emotionMode as EmotionMode,
+      defaultEmotion: defaultEmotion.trim().slice(0, 40),
+      defaultInstruct: defaultInstruct.trim().slice(0, 500),
+      speed: Math.min(2, Math.max(0.5, rawSpeed)),
+      paralinguistic: paralinguistic as ParalinguisticMode,
+    };
   }
 
   outputTap() {
@@ -408,7 +480,7 @@ export class VoiceWorld implements World {
     const cfg = this.cfg;
     if (!cfg.autoSpeak) return;
 
-    const filtered = filterSpeech(raw, cfg);
+    const filtered = filterSpeech(raw, this.styled);
     if (!filtered.text) return;
 
     const userText = cfg.explicitTrigger
@@ -449,7 +521,7 @@ export class VoiceWorld implements World {
   // ———————— 工具 ————————
 
   private async handleSpeak(args: Record<string, unknown>): Promise<ToolOutcome> {
-    const filtered = filterSpeech(asString(args.text), this.cfg);
+    const filtered = filterSpeech(asString(args.text), this.styled);
     if (!filtered.text) return { text: 'voice_speak failed: there is nothing to say.', failed: true };
     const silent = args.silent === true || this.cfg.playback === 'none';
     const share = this.cfg.shareAudio || silent;
@@ -500,26 +572,47 @@ export class VoiceWorld implements World {
 
   private async handleStyle(args: Record<string, unknown>): Promise<ToolOutcome> {
     const has = (key: string): boolean => Object.prototype.hasOwnProperty.call(args, key);
-    const patch: Partial<VoiceConfigSection> = {};
-    if (has('emotion')) patch.defaultEmotion = asString(args.emotion).slice(0, 40);
-    if (has('instruct')) patch.defaultInstruct = asString(args.instruct).slice(0, 500);
-    if (has('voice')) patch.voice = asString(args.voice).slice(0, 200);
+    const model = this.cfg.model.trim();
+    if (!model) {
+      // 还没选模型时写到全局回落值;模型页仍可之后覆盖。
+      const patch: Partial<VoiceConfigSection> = {};
+      if (has('emotion')) patch.defaultEmotion = asString(args.emotion).slice(0, 40);
+      if (has('instruct')) patch.defaultInstruct = asString(args.instruct).slice(0, 500);
+      if (has('voice')) patch.voice = asString(args.voice).slice(0, 200);
+      if (has('speed')) {
+        const speed = asNumber(args.speed);
+        if (speed !== undefined) patch.speed = Math.min(2, Math.max(0.5, speed));
+      }
+      if (Object.keys(patch).length > 0) {
+        this.opts.persist(patch);
+        return { text: `Voice style updated. ${this.styleSummary()}` };
+      }
+      return { text: this.styleSummary() };
+    }
+
+    const current = modelStyle(this.cfg, model);
+    const next: VoiceModelStyle = { ...current };
+    if (has('emotion')) next.defaultEmotion = asString(args.emotion).slice(0, 40);
+    if (has('instruct')) next.defaultInstruct = asString(args.instruct).slice(0, 500);
+    if (has('voice')) next.voice = asString(args.voice).slice(0, 200);
     if (has('speed')) {
       const speed = asNumber(args.speed);
-      if (speed !== undefined) patch.speed = Math.min(2, Math.max(0.5, speed));
+      if (speed !== undefined) next.speed = Math.min(2, Math.max(0.5, speed));
     }
-    if (Object.keys(patch).length > 0) {
-      this.opts.persist(patch);
+    if (Object.keys(next).some((key) => next[key as keyof VoiceModelStyle] !== current[key as keyof VoiceModelStyle])) {
+      const modelStyles: VoiceConfigSection['modelStyles'] = { ...(this.cfg.modelStyles ?? {}), [model]: next };
+      this.cfg.modelStyles = modelStyles;
+      this.opts.persist({ modelStyles });
       return { text: `Voice style updated. ${this.styleSummary()}` };
     }
     return { text: this.styleSummary() };
   }
 
   private styleSummary(): string {
-    const cfg = this.cfg;
+    const cfg = this.styled;
     return `Voice: ${cfg.voice || 'default'}; emotion: ${cfg.defaultEmotion || 'neutral'}; `
       + `direction: ${cfg.defaultInstruct || 'none'}; speed: ${cfg.speed}; `
-      + `automatic: ${cfg.autoSpeak ? `${Math.round(cfg.autoProbability * 100)}%` : 'off'}.`;
+      + `automatic: ${this.cfg.autoSpeak ? `${Math.round(this.cfg.autoProbability * 100)}%` : 'off'}.`;
   }
 
   private spokenOutcome(audio: TtsAudio | undefined, seconds: number, silent: boolean): ToolOutcome {
@@ -553,7 +646,7 @@ export class VoiceWorld implements World {
     style: { emotion?: string; instruct?: string; voice?: string; speed?: number },
     signal: AbortSignal,
   ): Promise<TtsAudio> {
-    const cfg = this.cfg;
+    const cfg = this.styled;
     const resolved = resolveStyle(cfg, style);
     const request: TtsRequest = {
       text,
@@ -599,7 +692,7 @@ export class VoiceWorld implements World {
         origin: 'internal',
         senderKey: this.id,
         text: `Spoken line: ${chunk.slice(0, 100)}`,
-        meta: { source: job.source, voice: this.cfg.voice, emotion: this.cfg.defaultEmotion },
+        meta: { source: job.source, voice: this.styled.voice, emotion: this.styled.defaultEmotion },
         blobs: [{
           bytes: audio.bytes,
           mime: audio.mime,

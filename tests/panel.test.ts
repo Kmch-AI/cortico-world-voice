@@ -36,12 +36,28 @@ describe('模型面板', () => {
     const h = make();
     const invoke = invokeOf(h);
     const first = await invoke('model', 'state', []) as PanelModelState;
-    expect(first).toEqual({
+    expect(first).toMatchObject({
       model: '',
       voice: '',
       prompt: modelPrompt(''),
       options: {},
+      style: {
+        voice: '',
+        emotionMode: 'instruct',
+        defaultEmotion: '',
+        defaultInstruct: '',
+        speed: 1,
+        paralinguistic: 'auto',
+      },
       models: h.service.modelList,
+      prompts: { 'ming3-tts': modelPrompt('ming3-tts') },
+      settings: {
+        'ming3-tts': {
+          voice: '',
+          style: { emotionMode: 'instruct', speed: 1 },
+          options: {},
+        },
+      },
     });
     expect(h.service.modelCalls).toBe(1);
     expect(h.service.voiceCalls).toBe(1);
@@ -53,7 +69,7 @@ describe('模型面板', () => {
   });
 
   it('save 写回模型、音色与当前模型的参数', async () => {
-    const h = make({ model: 'ming3-tts', voice: '4016' });
+    const h = make({ model: 'ming3-tts', voice: 'legacy' });
     const invoke = invokeOf(h);
     const saved = await invoke('model', 'save', [{
       model: ' index-tts2 ',
@@ -62,14 +78,72 @@ describe('模型面板', () => {
     }]) as PanelModelState;
 
     expect(h.cfg.model).toBe('index-tts2');
-    expect(h.cfg.voice).toBe('4016');
+    expect(h.cfg.voice).toBe('legacy');
+    expect(h.cfg.modelStyles?.['index-tts2']).toMatchObject({
+      voice: '4016',
+      emotionMode: 'instruct',
+      defaultEmotion: '',
+      defaultInstruct: '',
+      speed: 1,
+      paralinguistic: 'auto',
+    });
     expect(h.cfg.modelOptions).toEqual({
       'index-tts2': { emotion_alpha: 1.2, use_emotion_text: true },
     });
     expect(saved.model).toBe('index-tts2');
+    expect(saved.voice).toBe('4016');
     expect(saved.prompt).toBe(modelPrompt('index-tts2'));
     expect(saved.prompt).toContain('emotion_text');
     expect(saved.options).toEqual({ emotion_alpha: 1.2, use_emotion_text: true });
+  });
+
+  it('save 把朗读风格按模型保存,并回读每个模型的设置', async () => {
+    const h = make({ model: 'ming3-tts', modelStyles: { 'index-tts2': { speed: 1.4 } } });
+    const invoke = invokeOf(h);
+    const saved = await invoke('model', 'save', [{
+      model: 'ming3-tts',
+      voice: '4016',
+      style: {
+        emotionMode: 'categorical',
+        defaultEmotion: '温柔',
+        defaultInstruct: '像在耳边说话',
+        speed: 0.9,
+        paralinguistic: 'strip',
+      },
+      options: { seed: 7 },
+    }]) as PanelModelState;
+
+    expect(saved.style).toEqual({
+      voice: '4016',
+      emotionMode: 'categorical',
+      defaultEmotion: '温柔',
+      defaultInstruct: '像在耳边说话',
+      speed: 0.9,
+      paralinguistic: 'strip',
+    });
+    expect(saved.settings['ming3-tts']).toEqual({
+      voice: '4016',
+      style: saved.style,
+      options: { seed: 7 },
+    });
+    expect(saved.settings['index-tts2']).toMatchObject({
+      style: { voice: '', speed: 1.4, emotionMode: 'instruct' },
+      options: {},
+    });
+  });
+
+  it('save 校验朗读风格字段', async () => {
+    const h = make({ model: 'ming3-tts' });
+    const invoke = invokeOf(h);
+    await expect(invoke('model', 'save', [{
+      model: 'ming3-tts', voice: '', options: {}, style: { emotionMode: 'loud' },
+    }])).rejects.toThrow();
+    await expect(invoke('model', 'save', [{
+      model: 'ming3-tts', voice: '', options: {}, style: { paralinguistic: 'maybe' },
+    }])).rejects.toThrow();
+    await expect(invoke('model', 'save', [{
+      model: 'ming3-tts', voice: '', options: {}, style: { speed: 'fast' },
+    }])).rejects.toThrow();
   });
 
   it('空 options 删掉该模型的条目', async () => {

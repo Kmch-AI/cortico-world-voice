@@ -7,7 +7,7 @@ import { VoiceWorld } from './world.ts';
 export const VOICE: WorldDefinition<VoiceConfigSection> = {
   id: VOICE_ID,
   label: VOICE_LABEL,
-  defaults: () => ({ ...VOICE_DEFAULTS, modelOptions: {} }),
+  defaults: () => ({ ...VOICE_DEFAULTS, modelOptions: {}, modelStyles: {} }),
   create: (ctx) => new VoiceWorld({
     cfg: ctx.cfg,
     timezone: ctx.timezone,

@@ -1,7 +1,7 @@
 /** `worlds.voice` 的默认值、配置组与界面文案。 */
 import type { ConfigGroup } from 'cortico/core/types.ts';
 import { pick, type Language, type LanguageTable } from 'cortico/core/language.ts';
-import type { VoiceConfigSection } from './types.ts';
+import type { VoiceConfigSection, VoiceModelStyle } from './types.ts';
 
 export const VOICE_ID = 'voice';
 /** World 定义、WebUI 与配置页共用同一个显示名。 */
@@ -15,6 +15,7 @@ export const VOICE_DEFAULTS: VoiceConfigSection = {
   model: '',
   voice: '',
   modelOptions: {},
+  modelStyles: {},
   format: 'wav',
   timeoutMs: 180_000,
 
@@ -49,6 +50,27 @@ export const VOICE_DEFAULTS: VoiceConfigSection = {
   shareAudio: false,
 };
 
+/**
+ * 当前模型的朗读风格。模型页保存的值优先,缺省字段回落到旧的全局值,
+ * 这样升级前已有的配置仍然有效。
+ */
+export function modelStyle(cfg: VoiceConfigSection, model = cfg.model): VoiceModelStyle {
+  const saved = cfg.modelStyles?.[model] ?? {};
+  return {
+    voice: saved.voice ?? cfg.voice,
+    emotionMode: saved.emotionMode ?? cfg.emotionMode,
+    defaultEmotion: saved.defaultEmotion ?? cfg.defaultEmotion,
+    defaultInstruct: saved.defaultInstruct ?? cfg.defaultInstruct,
+    speed: saved.speed ?? cfg.speed,
+    paralinguistic: saved.paralinguistic ?? cfg.paralinguistic,
+  };
+}
+
+/** 把模型风格盖到配置上,给过滤、合成与提示词读取。 */
+export function styledConfig(cfg: VoiceConfigSection, model = cfg.model): VoiceConfigSection {
+  return { ...cfg, ...modelStyle(cfg, model) };
+}
+
 const TEXT = {
   zh: {
     label: 'Kmch AI · 语音',
@@ -60,6 +82,7 @@ const TEXT = {
     modelSaveShape: '保存失败:参数格式不对。',
     modelSaveModel: '保存失败:模型 id 不能为空。',
     modelSaveVoice: '保存失败:音色必须是字符串。',
+    modelSaveStyle: '保存失败:朗读风格格式不对。',
     modelSaveOptions: '保存失败:模型参数必须是对象。',
     modelUnknownMethod: '未知的面板方法。',
     connection: '连接',
@@ -70,15 +93,6 @@ const TEXT = {
     serviceTokenSecretDesc: '部署 .env 里的变量名,留空表示服务不校验。',
     format: '音频格式',
     timeoutMs: '超时(毫秒)',
-    style: '音色与情绪',
-    styleDesc: '',
-    emotionMode: '情绪控制',
-    emotionModeDesc: 'instruct 折成自然语言指令;categorical 只发情绪标签;basic 只发语速;tags 只用正文标签;none 不发。',
-    defaultEmotion: '默认情绪',
-    defaultInstruct: '默认表演指令',
-    speed: '语速',
-    paralinguistic: '副语言标签',
-    paralinguisticDesc: 'auto 只在当前模型支持标签时保留;keep 一律保留;strip 一律从朗读文本里删掉。',
     triggers: '触发',
     triggersDesc: '',
     autoSpeak: '自动朗读',
@@ -123,6 +137,7 @@ const TEXT = {
     modelSaveShape: 'Save failed: invalid arguments.',
     modelSaveModel: 'Save failed: the model id must not be empty.',
     modelSaveVoice: 'Save failed: voice must be a string.',
+    modelSaveStyle: 'Save failed: invalid voice style.',
     modelSaveOptions: 'Save failed: model options must be an object.',
     modelUnknownMethod: 'Unknown panel method.',
     connection: 'Connection',
@@ -133,15 +148,6 @@ const TEXT = {
     serviceTokenSecretDesc: 'Name in the deployment .env; empty means the service does not check.',
     format: 'Audio format',
     timeoutMs: 'Timeout (ms)',
-    style: 'Voice and emotion',
-    styleDesc: '',
-    emotionMode: 'Emotion control',
-    emotionModeDesc: 'instruct turns it into natural language; categorical sends a label; basic sends speed; tags uses inline tags only; none sends nothing.',
-    defaultEmotion: 'Default emotion',
-    defaultInstruct: 'Default direction',
-    speed: 'Speed',
-    paralinguistic: 'Paralinguistic tags',
-    paralinguisticDesc: 'auto keeps them only when the current model supports them; keep always keeps; strip removes them from the spoken text.',
     triggers: 'Triggers',
     triggersDesc: '',
     autoSpeak: 'Automatic speech',
@@ -201,21 +207,6 @@ export function voiceConfigGroups(language: Language): ConfigGroup[] {
           [`${p}serviceTokenSecret`]: { type: 'string', title: t.serviceTokenSecret, description: t.serviceTokenSecretDesc, 'x-hot': true },
           [`${p}format`]: { type: 'string', title: t.format, enum: ['wav', 'mp3'], 'x-hot': true },
           [`${p}timeoutMs`]: { type: 'integer', title: t.timeoutMs, minimum: 1000, maximum: 600_000, 'x-hot': true },
-        },
-      },
-    },
-    {
-      id: 'world:voice-style',
-      owner: 'world:voice',
-      schema: {
-        type: 'object',
-        title: t.style,
-        properties: {
-          [`${p}emotionMode`]: { type: 'string', title: t.emotionMode, description: t.emotionModeDesc, enum: ['instruct', 'categorical', 'basic', 'tags', 'none'], 'x-hot': true },
-          [`${p}defaultEmotion`]: { type: 'string', title: t.defaultEmotion, 'x-hot': true },
-          [`${p}defaultInstruct`]: { type: 'string', title: t.defaultInstruct, 'x-hot': true },
-          [`${p}speed`]: { type: 'number', title: t.speed, minimum: 0.5, maximum: 2, multipleOf: 0.05, 'x-hot': true },
-          [`${p}paralinguistic`]: { type: 'string', title: t.paralinguistic, description: t.paralinguisticDesc, enum: ['auto', 'keep', 'strip'], 'x-hot': true },
         },
       },
     },

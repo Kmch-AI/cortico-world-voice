@@ -34,7 +34,6 @@ corepack pnpm add "D:/path/to/cortico-world-voice" --ignore-workspace
       "serviceUrl": "http://127.0.0.1:9883",
       "serviceTokenSecret": "",
       "model": "ming3-tts",
-      "voice": "4016",
       "playback": "local",
       "autoSpeak": true,
       "autoProbability": 0.3
@@ -47,7 +46,7 @@ corepack pnpm add "D:/path/to/cortico-world-voice" --ignore-workspace
 
 ## 模型面板
 
-World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回的参数元数据渲染字段。保存写进 `worlds.voice.modelOptions[model]`,合成时作为 `options` 发给服务;空参数表删掉该模型的条目。模型专属的文本与情绪写法显示在同页的「模型提示词」折叠区。系统 Config tab 只留服务地址、风格、触发、过滤与输出。
+World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回的参数元数据渲染字段。同一页的「声音与情绪」按模型保存情绪控制方式、默认情绪、默认表演指令、语速与副语言标签策略;切换模型时读回该模型自己的设置。模型设置存 `worlds.voice.modelStyles[model]`,模型参数存 `worlds.voice.modelOptions[model]`;合成时作为 `options` 发给服务。模型专属的文本与情绪写法显示在同页的「模型提示词」折叠区。系统 Config tab 只留服务地址、触发、过滤与输出。
 
 ## 工具
 
@@ -82,7 +81,7 @@ World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回�
 
 ## 情绪、语速与标签
 
-语音只把语义字段发给服务,由服务的模型 profile 决定怎么落到具体模型:
+情绪与语速设置按模型保存在「模型」页,不再出现在系统 Config tab。语音只把语义字段发给服务,由服务的模型 profile 决定怎么落到具体模型:
 
 | `emotionMode` | 语音发送 | `audiocpp-ming3` profile 的落点 |
 |---|---|---|
@@ -96,8 +95,8 @@ OpenAI 兼容条目把 `instructions` / `emotion` / `speed` 直接放进请求�
 
 `response_format` 每次都带;`model` 与 `voice` 配了才带,工具参数里的音色优先于配置默认值。
 
-- 情绪来源:工具参数 > 正文里的 `[emotion:开心]` 标记 > `defaultEmotion`。
-- `voice_style` 读写长期风格(情绪、指令、音色、语速),写回 `worlds.voice`。
+- 情绪来源:工具参数 > 正文里的 `[emotion:开心]` 标记 > 当前模型的 `defaultEmotion`。
+- `voice_style` 读写当前模型的长期风格(情绪、指令、音色、语速),写进 `modelStyles[model]`;还没选模型时写到全局回落值。
 - 副语言标签:`[Breathing] [Cough] [Sigh] [Laughter] [Surprise-ah] [Surprise-oh] [Dissatisfaction-hnn] [Uhm] [Confirmation-en] [Question-ei] [Question-ah] [Question-en] [Question-oh] [Question-huh]`。
   `paralinguistic: auto` 只在当前模型支持标签(Ming 3.0 系)时保留,IndexTTS2 与通用模型剥掉;`keep` 一律保留,`strip` 一律删除。表外 `[...]` 会从朗读文本里剥掉,防止被念出来。
 
@@ -141,7 +140,7 @@ OpenAI 兼容条目把 `instructions` / `emotion` / `speed` 直接放进请求�
 | `httpApi` / `httpPort` / `httpToken` / `httpPlay` | 删除;服务的网关取代本地语音接口。 |
 | `singUrl` / `singToken`、`voice_sing`、`【唱】` | 删除;唱歌由服务的 `/v1/audio/sing` 与网关接入。 |
 | `model` / `voice` / `format` / `timeoutMs` | 保留,含义不变。 |
-| `emotionMode` / `defaultEmotion` / `defaultInstruct` / `speed` / `paralinguistic` | 保留;语音只发语义字段,由服务的模型 profile 映射到具体模型。 |
+| `emotionMode` / `defaultEmotion` / `defaultInstruct` / `speed` / `paralinguistic` | 移到「模型」页,按模型保存;旧全局值仍作为没有模型设置时的回落。 |
 | 触发、过滤、输出配置 | 保留。 |
 
 ## 验证
@@ -153,7 +152,7 @@ pnpm smoke:player out.wav                 # 本机播放器,音量 0
 pnpm smoke:chain http://127.0.0.1:9883    # 触发→过滤→经服务合成→tts.voice 全链路
 ```
 
-装进 Cortico 后应看到:World 页多一张「Kmch AI · 语音」卡,服务灯、队列灯与 `service` / `model` / `voice` 徽标;「模型」tab 能选模型与音色、按服务参数渲染字段并保存;服务在线时灯亮;让 bot 调 `voice_speak` 能听见;说「念给我听」会绕过概率;`playback: event` 时时间线出现 `tts.voice`。
+装进 Cortico 后应看到:World 页多一张「Kmch AI · 语音」卡,服务灯、队列灯与 `service` / `model` / `voice` 徽标;「模型」tab 能选模型与音色,按模型调整声音与情绪,并按服务参数渲染字段、保存;服务在线时灯亮;让 bot 调 `voice_speak` 能听见;说「念给我听」会绕过概率;`playback: event` 时时间线出现 `tts.voice`。
 
 ## 许可
 

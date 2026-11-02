@@ -5,14 +5,28 @@
 
 import type { WebUiClientBundle, WebUiPanelContext } from 'cortico/web/shared/client-panel.ts';
 import type { PanelModelSave, PanelModelState } from '../src/panel.ts';
-import type { ModelParameter } from '../src/types.ts';
-import { PARAM_LABELS, panelText } from './strings.ts';
+import type { ModelParameter, VoiceModelStyle } from '../src/types.ts';
+import { PARAM_LABELS, panelText, type PanelText } from './strings.ts';
 import './style.css';
+
+const EMPTY_STYLE: VoiceModelStyle = {
+  voice: '',
+  emotionMode: 'instruct',
+  defaultEmotion: '',
+  defaultInstruct: '',
+  speed: 1,
+  paralinguistic: 'auto',
+};
 
 interface Control {
   param: ModelParameter;
   el: HTMLElement;
   read(): unknown | undefined;
+}
+
+interface StyleFields {
+  el: HTMLElement;
+  read(): VoiceModelStyle;
 }
 
 function parameterValue(param: ModelParameter, options: Record<string, unknown>): unknown {
@@ -106,6 +120,66 @@ function makeControl(
   return { param, el: field, read };
 }
 
+function styleField(
+  ctx: WebUiPanelContext,
+  label: string,
+  control: HTMLElement,
+): HTMLElement {
+  const field = ctx.ui.h('div', 'vx-field');
+  const head = ctx.ui.h('div', 'vx-head');
+  head.append(ctx.ui.h('span', 'vx-label', label));
+  field.append(head, control);
+  return field;
+}
+
+/** 模型的朗读风格;音色在上方的选择器里,这里不再重复。 */
+function makeStyleFields(
+  ctx: WebUiPanelContext,
+  t: PanelText,
+  style: VoiceModelStyle,
+): StyleFields {
+  const ui = ctx.ui;
+  const grid = ui.h('div', 'vx-params');
+
+  const emotionMode = ui.select({
+    options: t.emotionModeOptions.map(({ value, label }) => ({ value, label })),
+    value: style.emotionMode,
+  });
+  const defaultEmotion = ui.input({ type: 'text', value: style.defaultEmotion });
+  const defaultInstruct = ui.input({ type: 'text', value: style.defaultInstruct });
+  const speed = ui.input({ type: 'number', value: String(style.speed) });
+  speed.min = '0.5';
+  speed.max = '2';
+  speed.step = '0.05';
+  const paralinguistic = ui.select({
+    options: t.paralinguisticOptions.map(({ value, label }) => ({ value, label })),
+    value: style.paralinguistic,
+  });
+
+  grid.append(
+    styleField(ctx, t.emotionMode, emotionMode),
+    styleField(ctx, t.defaultEmotion, defaultEmotion),
+    styleField(ctx, t.defaultInstruct, defaultInstruct),
+    styleField(ctx, t.speed, speed),
+    styleField(ctx, t.paralinguistic, paralinguistic),
+  );
+
+  return {
+    el: grid,
+    read: () => {
+      const value = Number(speed.value);
+      return {
+        voice: style.voice,
+        emotionMode: emotionMode.value as VoiceModelStyle['emotionMode'],
+        defaultEmotion: defaultEmotion.value.trim(),
+        defaultInstruct: defaultInstruct.value.trim(),
+        speed: Number.isFinite(value) ? Math.min(2, Math.max(0.5, value)) : style.speed,
+        paralinguistic: paralinguistic.value as VoiceModelStyle['paralinguistic'],
+      };
+    },
+  };
+}
+
 function mountModel(ctx: WebUiPanelContext): void {
   const t = panelText(ctx.language);
   const ui = ctx.ui;
@@ -125,18 +199,24 @@ function mountModel(ctx: WebUiPanelContext): void {
   const refresh = ui.button(t.refresh, { size: 'sm', onClick: () => void load('refresh') });
   top.append(modelPick, voicePick, refresh);
 
+  const styleSection = ui.section(t.styleTitle);
+  const styleHost = ui.h('div', 'vx-section');
+  const paramsSection = ui.section(t.paramsTitle);
+  paramsSection.hidden = true;
   const params = ui.h('div', 'vx-params');
   const save = ui.button(t.save, { variant: 'primary', size: 'sm', onClick: () => void saveOptions() });
   const msg = ui.msgline();
   const actions = ui.actions();
   actions.append(save);
-  sheet.body.append(top, params, actions, msg);
+  sheet.body.append(top, styleSection, styleHost, paramsSection, params, actions, msg);
   ctx.root.append(sheet.el);
 
   const prompt = ui.foldSheet('voice-model-prompt', { title: t.promptTitle, defaultOpen: false });
   const promptText = ui.h('pre', 'vx-prompt');
   prompt.body.append(promptText);
   ctx.root.append(prompt.el);
+
+  let styleFields: StyleFields | null = null;
 
   function option(value: string, label = value): HTMLOptionElement {
     const el = ui.h('option');
@@ -158,10 +238,21 @@ function mountModel(ctx: WebUiPanelContext): void {
     refresh.disabled = busy;
   }
 
+  function settingOf(id: string) {
+    return latest?.settings?.[id];
+  }
+
+  function styleOf(id: string): VoiceModelStyle {
+    return settingOf(id)?.style
+      ?? (latest?.model === id ? latest.style : undefined)
+      ?? EMPTY_STYLE;
+  }
+
   function renderVoices(): void {
     const model = latest?.models.find((item) => item.id === selected);
     const voices = model?.voices ?? [];
-    const current = latest?.model === selected ? latest.voice : '';
+    const current = settingOf(selected)?.voice
+      ?? (latest?.model === selected ? latest.voice : '');
     const list = [...voices];
     if (current && !list.includes(current)) list.unshift(current);
     const choices = list.map((voice) => option(voice));
@@ -170,9 +261,15 @@ function mountModel(ctx: WebUiPanelContext): void {
     voiceSelect.value = current;
   }
 
+  function renderStyle(): void {
+    styleFields = makeStyleFields(ctx, t, styleOf(selected));
+    styleHost.replaceChildren(styleFields.el);
+  }
+
   function renderParams(): void {
     const model = latest?.models.find((item) => item.id === selected);
-    const options = latest && latest.model === selected ? latest.options : {};
+    const options = settingOf(selected)?.options
+      ?? (latest?.model === selected ? latest.options : {});
     controls = [];
     params.replaceChildren();
     for (const param of model?.parameters ?? []) {
@@ -180,12 +277,22 @@ function mountModel(ctx: WebUiPanelContext): void {
       controls.push(control);
       params.append(control.el);
     }
+    paramsSection.hidden = (model?.parameters?.length ?? 0) === 0;
+  }
+
+  function renderPrompt(): void {
+    const text = latest?.prompts?.[selected]
+      ?? (latest?.model === selected ? latest.prompt : '');
+    promptText.textContent = text;
+    prompt.note.textContent = selected || '—';
   }
 
   function selectModel(value: string): void {
     selected = value;
     renderVoices();
+    renderStyle();
     renderParams();
+    renderPrompt();
     applyEnabled();
   }
 
@@ -193,9 +300,9 @@ function mountModel(ctx: WebUiPanelContext): void {
     latest = next;
     selected = next.model;
     renderTop();
+    renderStyle();
     renderParams();
-    promptText.textContent = next.prompt;
-    prompt.note.textContent = next.model || '—';
+    renderPrompt();
     applyEnabled();
     setMessage(next.error ?? '', next.error !== undefined);
   }
@@ -222,6 +329,10 @@ function mountModel(ctx: WebUiPanelContext): void {
     return out;
   }
 
+  function currentStyle(): VoiceModelStyle {
+    return { ...(styleFields?.read() ?? styleOf(selected)), voice: voiceSelect.value };
+  }
+
   async function load(method: 'state' | 'refresh'): Promise<void> {
     if (busy) return;
     busy = true;
@@ -243,6 +354,7 @@ function mountModel(ctx: WebUiPanelContext): void {
     const payload: PanelModelSave = {
       model: selected,
       voice: voiceSelect.value,
+      style: currentStyle(),
       options: currentOptions(),
     };
     busy = true;

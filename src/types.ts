@@ -7,6 +7,17 @@ export type EmotionMode = 'instruct' | 'categorical' | 'basic' | 'tags' | 'none'
 export type ParalinguisticMode = 'auto' | 'keep' | 'strip';
 export type PlaybackMode = 'local' | 'event' | 'none';
 
+/** 单个模型的朗读风格;缺省字段回落到 `worlds.voice` 上的全局同名值。 */
+export interface VoiceModelStyle {
+  voice: string;
+  emotionMode: EmotionMode;
+  defaultEmotion: string;
+  defaultInstruct: string;
+  /** 语速倍率;1 为原速。 */
+  speed: number;
+  paralinguistic: ParalinguisticMode;
+}
+
 /** `config.json` 的 `worlds.voice` 段。 */
 export interface VoiceConfigSection {
   enabled: boolean;
@@ -17,13 +28,16 @@ export interface VoiceConfigSection {
   /** 服务令牌的环境变量名;空表示服务不校验。 */
   serviceTokenSecret: string;
   model: string;
+  /** 旧的全局音色;只作为没有模型专属设置时的回落值。 */
   voice: string;
   /** 模型专属的 request 参数,按模型 id 分组;由「模型」面板写回,不进 ConfigGroup。 */
   modelOptions: Record<string, Record<string, unknown>>;
+  /** 模型专属的朗读风格;由「模型」面板写回,不进 ConfigGroup。 */
+  modelStyles: Record<string, Partial<VoiceModelStyle>>;
   format: AudioFormat;
   timeoutMs: number;
 
-  // 音色与情绪
+  // 朗读风格的全局回落值(旧配置仍可用;界面上已移到模型页)
   emotionMode: EmotionMode;
   defaultEmotion: string;
   defaultInstruct: string;
