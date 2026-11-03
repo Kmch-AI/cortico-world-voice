@@ -6,7 +6,8 @@ export const VOICE_TOOL_DECLS: readonly ToolSpec[] = [
     name: 'voice_speak',
     description:
       'Say a line aloud in your voice through the person\'s speakers, or only synthesize it when silent is true. '
-      + 'Use it when the person asks for voice, or when this line needs a specific emotion or voice. '
+      + 'Use it when the person asks for voice. '
+      + 'Fill only the fields allowed by the current model guidance in the environment prompt. '
       + 'It only makes sound; the visible reply still goes through the channel\'s own send tool. '
       + 'When the speech service supports paralinguistic tags, keep them inline in the text: [Laughter], [Sigh], [Breathing], [Uhm], [Question-ei] and the like are performed, not read out.',
     tags: ['speak'],
@@ -15,8 +16,8 @@ export const VOICE_TOOL_DECLS: readonly ToolSpec[] = [
       additionalProperties: false,
       properties: {
         text: { type: 'string', maxLength: 2000, description: 'The line to say.' },
-        emotion: { type: 'string', maxLength: 40, description: 'Emotion for this line, for example 开心、温柔、疲惫. Omit to use the standing style.' },
-        instruct: { type: 'string', maxLength: 500, description: 'Natural-language direction for this line, for example "像在耳边轻声说话，语速偏慢". Omit to use the standing style.' },
+        emotion: { type: 'string', maxLength: 40, description: 'Emotion for this line when the current model guidance allows it, for example 开心、温柔、疲惫. IndexTTS2 uses instruct instead. Omit to use the standing style.' },
+        instruct: { type: 'string', maxLength: 500, description: 'Natural-language direction for this line, for example "像在耳边轻声说话，语速偏慢". Preferred for IndexTTS2. Omit to use the standing style.' },
         voice: { type: 'string', maxLength: 200, description: 'Voice id for this line. Omit to use the configured voice.' },
         speed: { type: 'number', minimum: 0.5, maximum: 2, description: 'Speed multiplier for this line; 1 is normal.' },
         silent: { type: 'boolean', description: 'true synthesizes without playing on this computer; use it for a line meant for another channel.' },
@@ -33,8 +34,8 @@ export const VOICE_TOOL_DECLS: readonly ToolSpec[] = [
   {
     name: 'voice_style',
     description:
-      'Read or change the standing voice style used by later voice lines. Call with values to change them; call with no arguments to read the current style. '
-      + 'Changes are saved to the World configuration and apply to later lines.',
+      'Read or change the standing defaults used by later voice lines. Do not use it for a single line; only when the person asks for a lasting change. '
+      + 'Call with values to change them; call with no arguments to read the current style. Changes are saved to the World configuration and apply to later lines.',
     tags: ['write'],
     parameters: {
       type: 'object',

@@ -1,3 +1,8 @@
+## 0.4.2
+
+- IndexTTS2 的模型提示词改为明确约束:调用 `voice_speak` 时只填 `text` 与 `instruct`,不要填 `emotion`、`voice`、`speed`;`instruct` 由服务映射到 `emotion_text`。
+- 通用环境提示词不再单独提 `voice_style`,并改成按模型片段决定可填字段;`voice_style` 只改后续语音的长期默认值,工具说明也注明不用于单句。
+
 ## 0.4.1
 
 - 模型参数里的浮点输入改为 `step="0.01"`，0–1 的强度、概率等参数用右侧步进器可精确到 0.01；整数参数仍是 1。

@@ -51,7 +51,7 @@ World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回�
 | 工具 | 作用 |
 |---|---|
 | `voice_speak` | 念一句;可带 `emotion`、`instruct`、`voice`、`speed`、`silent`。 |
-| `voice_style` | 读或改长期风格(情绪、指令、音色、语速),写回 `worlds.voice`,影响之后的语音。 |
+| `voice_style` | 读或改后续语音的长期默认风格(情绪、指令、音色、语速),写回 `worlds.voice`;不用于单句。 |
 | `voice_hush` | 立刻停声,清空排队。 |
 
 `silent: true` 只合成、不在本机播放,音频随工具回执交给渠道,用于语音条这类出口。
@@ -60,7 +60,7 @@ World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回�
 
 | 路径 | 行为 |
 |---|---|
-| `voice_speak` 工具 | 立即念;可带 `emotion`、`instruct`、`voice`、`speed`、`silent`。 |
+| `voice_speak` 工具 | 立即念;可带 `emotion`、`instruct`、`voice`、`speed`、`silent`。IndexTTS2 只填 `text` 与 `instruct`;需要交给其他渠道时才填 `silent`。 |
 | 用户语义请求 | 最近 `explicitWindowSec` 秒内的外部消息含 `explicitKeywords`(默认「语音,声音,发语音,念给我听,读给我听,voice,tts」)时朗读这一轮的纯文本正文。 |
 | `<tts>…</tts>` | 只念标签内文。标签会出现在可见文字里;渠道可见时优先用工具触发。 |
 
@@ -80,12 +80,12 @@ World 页的「模型」tab 选模型与音色,并按服务 `/v1/models` 返回�
 | `tags` | 不发情绪参数,只用正文标签。 | 正文标签。 |
 | `none` | 都不发。 | — |
 
-OpenAI 兼容条目把 `instructions` / `emotion` / `speed` 直接放进请求。IndexTTS2 把 `instructions` 或 `emotion` 映射成 `use_emotion_text: true` 与 `emotion_text`;这两个参数由语音的「默认情绪 / 默认表演指令」或单句 `emotion` / `instruct` 驱动,不在模型参数面板里单独出现。其他模型可在服务面板里覆盖 profile 的字段映射,语音不用改配置。
+OpenAI 兼容条目把 `instructions` / `emotion` / `speed` 直接放进请求。IndexTTS2 把 `instructions` 或 `emotion` 映射成 `use_emotion_text: true` 与 `emotion_text`;这两个参数由语音的「默认情绪 / 默认表演指令」或单句 `emotion` / `instruct` 驱动,不在模型参数面板里单独出现。用 IndexTTS2 时,模型调用 `voice_speak` 只填 `text` 与 `instruct`,不要混用 `emotion` / `voice` / `speed`。其他模型可在服务面板里覆盖 profile 的字段映射,语音不用改配置。
 
 `response_format` 每次都带;`model` 与 `voice` 配了才带,工具参数里的音色优先于配置默认值。
 
 - 情绪来源:工具参数 > 正文里的 `[emotion:开心]` 标记 > 当前模型的 `defaultEmotion`。
-- `voice_style` 读写当前模型的长期风格(情绪、指令、音色、语速),写进 `modelStyles[model]`;还没选模型时写到全局回落值。
+- `voice_style` 读写当前模型的长期默认风格(情绪、指令、音色、语速),写进 `modelStyles[model]`;还没选模型时写到全局回落值。它是给后续语音用的,不是单句参数;单句语气用 `voice_speak` 的 `instruct`。
 - 副语言标签:`[Breathing] [Cough] [Sigh] [Laughter] [Surprise-ah] [Surprise-oh] [Dissatisfaction-hnn] [Uhm] [Confirmation-en] [Question-ei] [Question-ah] [Question-en] [Question-oh] [Question-huh]`。
   `paralinguistic: auto` 只在当前模型支持标签(Ming 3.0 系)时保留,IndexTTS2 与通用模型剥掉;`keep` 一律保留,`strip` 一律删除。表外 `[...]` 会从朗读文本里剥掉,防止被念出来。
 

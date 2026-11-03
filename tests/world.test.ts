@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -210,7 +210,13 @@ describe('Voice World', () => {
     const generic = make();
     await started(generic);
     expect(generic.world.envPromptVars()['voice.modelPrompt']).toBe(modelPrompt(''));
-    expect(generic.world.envPromptVars()['voice.modelPrompt']).toContain('instructions');
+    expect(generic.world.envPromptVars()['voice.modelPrompt']).toContain('用 instruct 描述语气');
+  });
+
+  it('通用环境提示词把字段限制交给模型片段,不再单独提 voice_style', () => {
+    const prompt = readFileSync(new URL('../src/ENV_PROMPT.md', import.meta.url), 'utf8');
+    expect(prompt).not.toContain('voice_style');
+    expect(prompt).toContain('只填当前模型允许的字段');
   });
 
   it('模型专属的朗读风格覆盖全局回落值', async () => {

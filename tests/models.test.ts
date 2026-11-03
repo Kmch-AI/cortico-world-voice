@@ -24,15 +24,17 @@ describe('models', () => {
   it('按模型选择文本与情绪写法', () => {
     const ming = modelPrompt('ming3-tts');
     expect(ming).toContain('[Laughter]');
-    expect(ming).toContain('instruct/emotion');
+    expect(ming).toContain('emotion 传情绪');
 
     const index = modelPrompt('index-tts2');
+    expect(index).toContain('只填 text 与 instruct');
+    expect(index).toContain('不要填 emotion、voice、speed');
     expect(index).toContain('emotion_text');
     expect(index).toContain('[Laughter]');
-    expect(index).not.toContain('支持 [Laughter]');
+    expect(index).not.toContain('情绪用 voice_speak 的 emotion 或 instruct');
 
     const generic = modelPrompt('');
-    expect(generic).toContain('instructions');
+    expect(generic).toContain('用 instruct 描述语气');
     expect(generic).toContain('不要用方括号标签');
     expect(modelPrompt('qwen-tts')).toBe(generic);
     expect(modelPrompt('openai-tts')).toBe(generic);
