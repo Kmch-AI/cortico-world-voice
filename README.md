@@ -1,6 +1,6 @@
 # @kmchai/cortico-world-voice
 
-Cortico 的语音 World:把回复念出来。触发、文本过滤、情绪语义、队列与播放留在这里;合成经 [Kmch AI · 服务](https://github.com/Kmch-AI/cortico-world-service) 的 HTTP 网关完成。
+Kmch AI · 语音：把回复念出来的 World。提供语音工具、显式朗读触发、情绪与副语言标签、文本过滤与本机播放；合成交给 [Kmch AI · 服务](https://github.com/Kmch-AI/cortico-world-service)。
 
 - **语音工具**:`voice_speak`、`voice_hush`、`voice_style`。
 - **三条显式触发路径**:工具调用、用户语义请求(「念给我听」)、正文里的 `<tts>…</tts>`;不掷概率,也不会自动朗读普通回复。

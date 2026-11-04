@@ -1,3 +1,8 @@
+## 0.4.3
+
+- 扩展介绍统一为中文的「定位 + 能力 + 边界」格式；npm `description`、市场中文介绍与 README 首段同步。
+- 标签按功能收紧：去掉 `local`。语音的合成在服务端完成，本包只做触发、过滤、队列与播放；保留 `voice`、`external-setup`、`requires-extension`、`experimental`。
+
 ## 0.4.2
 
 - IndexTTS2 的模型提示词改为明确约束:调用 `voice_speak` 时只填 `text` 与 `instruct`,不要填 `emotion`、`voice`、`speed`;`instruct` 由服务映射到 `emotion_text`。
