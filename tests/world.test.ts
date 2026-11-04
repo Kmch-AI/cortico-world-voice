@@ -4,10 +4,9 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { EventEnvelope, ToolCallContext } from 'cortico/core/types.ts';
 import { dryMountWorld } from 'cortico/extensions/dry-mount.ts';
-import type { StreamEvent } from 'cortico/protocol/open-responses/index.ts';
 import { VOICE_DEFAULTS, VOICE_LABEL, voiceText } from '../src/config.ts';
 import { VOICE } from '../src/definition.ts';
-import { modelPrompt } from '../src/models.ts';
+import type { VoiceModelStyle } from '../src/types.ts';
 import { FakeHost } from './helpers/fake-host.ts';
 import { fakeService, settle, testWorld, type TestWorldHandle } from './helpers/voice.ts';
 
@@ -23,10 +22,6 @@ function make(
   return handle;
 }
 
-function event(patch: Record<string, unknown>): StreamEvent {
-  return { type: 'x', ...patch } as unknown as StreamEvent;
-}
-
 async function started(handle: TestWorldHandle, host = new FakeHost()): Promise<FakeHost> {
   hosts.push(host);
   await handle.world.start(host);
@@ -38,6 +33,18 @@ function toolOf(handle: TestWorldHandle, name: string) {
   const tool = handle.world.tools().find((t) => t.name === name);
   if (!tool) throw new Error(`missing tool ${name}`);
   return tool;
+}
+
+function style(patch: Partial<VoiceModelStyle> = {}): Partial<VoiceModelStyle> {
+  return {
+    voice: '',
+    emotionMode: 'instruct',
+    defaultEmotion: '',
+    defaultInstruct: '',
+    speed: 1,
+    paralinguistic: 'auto',
+    ...patch,
+  };
 }
 
 afterEach(async () => {
@@ -59,10 +66,10 @@ describe('Voice World', () => {
     }
   });
 
-  it('只有 voice_speak / voice_hush / voice_style,不再有唱歌工具', async () => {
+  it('只有 voice_speak / voice_hush,不再有 voice_style 与唱歌工具', async () => {
     const h = make();
     await started(h);
-    expect(h.world.tools().map((t) => t.name)).toEqual(['voice_speak', 'voice_hush', 'voice_style']);
+    expect(h.world.tools().map((t) => t.name)).toEqual(['voice_speak', 'voice_hush']);
   });
 
   it('voice_speak 在 playback=none 时只合成并回执', async () => {
@@ -138,7 +145,7 @@ describe('Voice World', () => {
     await started(ok);
     const okUi = ok.world.webUi('zh');
     expect(okUi.lamps?.[0]?.state).toBe('online');
-    expect(okUi.config?.length).toBe(4);
+    expect(okUi.config?.length).toBe(3);
 
     const bad = make({}, {
       service: fakeService({ healthState: { ok: false, ready: false, status: 'HTTP 503', detail: 'voice service 503: down' } }),
@@ -150,7 +157,11 @@ describe('Voice World', () => {
   });
 
   it('webUi 显示服务灯、队列灯、地址/模型/音色徽标与服务页链接', async () => {
-    const h = make({ serviceUrl: 'http://127.0.0.1:9883', model: 'ming3-tts', voice: '4016' });
+    const h = make({
+      serviceUrl: 'http://127.0.0.1:9883',
+      model: 'ming3-tts',
+      modelStyles: { 'ming3-tts': style({ voice: '4016' }) },
+    });
     await started(h);
     const ui = h.world.webUi('zh');
     expect(ui.lamps?.map((lamp) => lamp.label)).toEqual(['语音服务', '朗读队列']);
@@ -163,7 +174,7 @@ describe('Voice World', () => {
   });
 
   it('连接组不再重复模型与音色,也不再提供 x-options 目录', async () => {
-    const h = make({ model: 'manual-model', voice: 'manual-voice' });
+    const h = make({ model: 'manual-model' });
     await started(h);
     const ui = h.world.webUi('zh');
     const connection = ui.config?.find((group) => group.id === 'world:voice-connection');
@@ -176,50 +187,72 @@ describe('Voice World', () => {
     expect(VOICE.configOptions).toBeUndefined();
   });
 
-  it('触发组只剩显式请求字段,不再有概率或自动来源', async () => {
+  it('没有触发组,最短/最长字数归到过滤组', async () => {
     const h = make();
     await started(h);
     const ui = h.world.webUi('zh');
-    const triggers = ui.config?.find((group) => group.id === 'world:voice-triggers');
-    expect(Object.keys(triggers?.schema.properties ?? {})).toEqual([
-      'worlds.voice.explicitTrigger',
-      'worlds.voice.explicitKeywords',
-      'worlds.voice.explicitWindowSec',
+    expect(ui.config?.map((group) => group.id)).toEqual([
+      'world:voice-connection',
+      'world:voice-filter',
+      'world:voice-output',
+    ]);
+    const filter = ui.config?.find((group) => group.id === 'world:voice-filter');
+    expect(Object.keys(filter?.schema.properties ?? {})).toEqual([
       'worlds.voice.minChars',
       'worlds.voice.maxChars',
+      'worlds.voice.filterCode',
+      'worlds.voice.filterUrls',
+      'worlds.voice.filterMarkdown',
+      'worlds.voice.filterActionTags',
+      'worlds.voice.filterEmoji',
+      'worlds.voice.filterSymbols',
     ]);
-    expect('autoSpeak' in VOICE_DEFAULTS).toBe(false);
-    expect('autoProbability' in VOICE_DEFAULTS).toBe(false);
-    expect('autoFromText' in VOICE_DEFAULTS).toBe(false);
-    expect('autoTools' in VOICE_DEFAULTS).toBe(false);
-    expect('autoEvents' in VOICE_DEFAULTS).toBe(false);
+    expect('explicitTrigger' in VOICE_DEFAULTS).toBe(false);
+    expect('explicitKeywords' in VOICE_DEFAULTS).toBe(false);
+    expect('explicitWindowSec' in VOICE_DEFAULTS).toBe(false);
   });
 
-  it('环境提示词变量带当前模型的写法', async () => {
+  it('环境提示词按模型与当前情绪/标签设置生成', async () => {
     const ming = make({ model: 'ming3-tts' });
     await started(ming);
-    expect(ming.world.envPromptVars()['voice.modelPrompt']).toBe(modelPrompt('ming3-tts'));
-    expect(ming.world.envPromptVars()['voice.modelPrompt']).toContain('[Laughter]');
-    expect(ming.world.envPromptVars()['voice.auto']).toBeUndefined();
+    const vars = ming.world.envPromptVars();
+    expect(vars['voice.modelPrompt']).toContain('[Laughter]');
+    expect(vars['voice.modelPrompt']).toContain('用 instruct');
+    expect(vars['voice.style']).toContain('情绪用自然语言控制');
+    expect(vars['voice.auto']).toBeUndefined();
+    expect(vars['voice.emotion']).toBeUndefined();
+    expect(vars['voice.instruct']).toBeUndefined();
+
+    const categorical = make({
+      model: 'ming3-tts',
+      modelStyles: { 'ming3-tts': style({ emotionMode: 'categorical', defaultEmotion: '开心' }) },
+    });
+    await started(categorical);
+    expect(categorical.world.envPromptVars()['voice.modelPrompt']).toContain('用 emotion 写一个短情绪词');
+    expect(categorical.world.envPromptVars()['voice.modelPrompt']).not.toContain('用 instruct');
+    expect(categorical.world.envPromptVars()['voice.style']).toContain('默认情绪是开心');
 
     const index = make({ model: 'index-tts2' });
     await started(index);
-    expect(index.world.envPromptVars()['voice.modelPrompt']).toBe(modelPrompt('index-tts2'));
     expect(index.world.envPromptVars()['voice.modelPrompt']).toContain('emotion_text');
+    expect(index.world.envPromptVars()['voice.modelPrompt']).toContain('这个模型不支持');
 
     const generic = make();
     await started(generic);
-    expect(generic.world.envPromptVars()['voice.modelPrompt']).toBe(modelPrompt(''));
-    expect(generic.world.envPromptVars()['voice.modelPrompt']).toContain('用 instruct 描述语气');
+    expect(generic.world.envPromptVars()['voice.modelPrompt']).toContain('instructions');
   });
 
-  it('通用环境提示词把字段限制交给模型片段,不再单独提 voice_style', () => {
+  it('通用环境提示词说明只有 voice_speak 会出声,且不再提 voice_style 或 <tts>', () => {
     const prompt = readFileSync(new URL('../src/ENV_PROMPT.md', import.meta.url), 'utf8');
     expect(prompt).not.toContain('voice_style');
-    expect(prompt).toContain('只填当前模型允许的字段');
+    expect(prompt).not.toContain('<tts>');
+    expect(prompt).toContain('只有调用 voice_speak 才会出声');
+    expect(prompt).toContain('只填当前设置允许的字段');
+    expect(prompt).toContain('{{voice.modelPrompt}}');
+    expect(prompt).toContain('{{voice.style}}');
   });
 
-  it('模型专属的朗读风格覆盖全局回落值', async () => {
+  it('模型专属的朗读风格覆盖全局回落值,并改变环境提示词', async () => {
     const h = make({
       playback: 'none',
       model: 'ming3-tts',
@@ -228,52 +261,25 @@ describe('Voice World', () => {
       defaultEmotion: '',
       paralinguistic: 'keep',
       modelStyles: {
-        'ming3-tts': {
+        'ming3-tts': style({
           voice: '4016',
           emotionMode: 'categorical',
           defaultEmotion: '开心',
-          defaultInstruct: '',
-          speed: 1,
           paralinguistic: 'strip',
-        },
+        }),
       },
     });
     await started(h);
     expect(h.world.envPromptVars()).toMatchObject({
       'voice.voice': '4016',
-      'voice.emotion': '开心',
     });
+    expect(h.world.envPromptVars()['voice.style']).toContain('默认情绪是开心');
+    expect(h.world.envPromptVars()['voice.modelPrompt']).toContain('用 emotion');
     expect(h.world.webUi('zh').badges?.find((badge) => badge.label === 'voice')?.value).toBe('4016');
 
     await toolOf(h, 'voice_speak').handler({ text: '[Laughter]你好' }, {} as ToolCallContext);
     expect(h.service.calls[0]?.text).toBe('你好');
     expect(h.service.calls[0]?.emotion).toBe('开心');
-  });
-
-  it('voice_style 选了模型后只写该模型的风格', async () => {
-    const h = make({ model: 'ming3-tts', modelStyles: {} });
-    await started(h);
-    await toolOf(h, 'voice_style').handler({ emotion: '开心', voice: 'v9', speed: 1.2 }, {} as ToolCallContext);
-    expect(h.cfg.defaultEmotion).toBe('');
-    expect(h.cfg.voice).toBe('');
-    expect(h.cfg.modelStyles?.['ming3-tts']).toMatchObject({
-      defaultEmotion: '开心',
-      voice: 'v9',
-      speed: 1.2,
-    });
-  });
-
-  it('voice_style 读与写', async () => {
-    const h = make();
-    await started(h);
-    const tool = toolOf(h, 'voice_style');
-    const read = await tool.handler({}, {} as ToolCallContext) as { text: string };
-    expect(read.text).toContain('Voice:');
-    expect(read.text).not.toContain('automatic');
-    expect(read.text).not.toContain('singing:');
-    await tool.handler({ emotion: '开心', voice: 'v9' }, {} as ToolCallContext);
-    expect(h.cfg.defaultEmotion).toBe('开心');
-    expect(h.cfg.voice).toBe('v9');
   });
 
   it('voice_hush 停声', async () => {
@@ -284,58 +290,42 @@ describe('Voice World', () => {
     expect(h.player.hushed).toBeGreaterThan(0);
   });
 
-  it('没有显式请求时纯文本不朗读', async () => {
+  it('不调用 voice_speak 时不会自己合成', async () => {
     const h = make({ playback: 'none' });
     await started(h);
-    const tap = h.world.outputTap()!;
-    tap.onEvent(event({ type: 'response.output_text.delta', delta: '今天天气不错。' }));
-    tap.onRoundEnd?.();
+    expect('outputTap' in h.world).toBe(false);
     await settle(10);
     expect(h.service.calls).toEqual([]);
   });
 
-  it('最近消息里有显式关键词时朗读', async () => {
-    const h = make({ playback: 'none' });
-    const host = new FakeHost();
-    const ts = new Date(1_700_000_000_000).toISOString();
-    host.store = {
-      ...host.store,
-      range: () => [{ cursor: 1, type: 'console.message', ts, source: 'console', origin: 'external', text: '', meta: { body: '念给我听' } }],
-    } as unknown as typeof host.store;
-    await started(h, host);
-    const tap = h.world.outputTap()!;
-    tap.onEvent(event({ type: 'response.output_text.delta', delta: '好呀。' }));
-    tap.onRoundEnd?.();
-    await settle(10);
-    expect(h.service.calls.map((c) => c.text)).toEqual(['好呀。']);
-  });
-
-  it('<tts> 包裹的正文直接朗读', async () => {
-    const h = make({ playback: 'none' });
-    await started(h);
-    const tap = h.world.outputTap()!;
-    tap.onEvent(event({ type: 'response.output_text.delta', delta: '前半句<tts>只念这里</tts>后半句' }));
-    tap.onRoundEnd?.();
-    await settle(10);
-    expect(h.service.calls.map((c) => c.text)).toEqual(['只念这里']);
-  });
-
   it('instruct 模式只发 instructions,categorical 只发 emotion,basic 只发 speed', async () => {
-    const instruct = make({ playback: 'none', emotionMode: 'instruct', defaultEmotion: '温柔', defaultInstruct: '' });
+    const instruct = make({
+      playback: 'none',
+      model: 'ming3-tts',
+      modelStyles: { 'ming3-tts': style({ emotionMode: 'instruct', defaultEmotion: '温柔' }) },
+    });
     await started(instruct);
     await toolOf(instruct, 'voice_speak').handler({ text: '甲' }, {} as ToolCallContext);
     expect(instruct.service.calls[0]?.instruct).toBe('用情绪是温柔的语气朗读。');
     expect(instruct.service.calls[0]?.emotion).toBeUndefined();
     expect(instruct.service.calls[0]?.speed).toBeUndefined();
 
-    const categorical = make({ playback: 'none', emotionMode: 'categorical', defaultEmotion: '害羞' });
+    const categorical = make({
+      playback: 'none',
+      model: 'ming3-tts',
+      modelStyles: { 'ming3-tts': style({ emotionMode: 'categorical', defaultEmotion: '害羞' }) },
+    });
     await started(categorical);
     await toolOf(categorical, 'voice_speak').handler({ text: '乙' }, {} as ToolCallContext);
     expect(categorical.service.calls[0]?.emotion).toBe('害羞');
     expect(categorical.service.calls[0]?.instruct).toBeUndefined();
     expect(categorical.service.calls[0]?.speed).toBeUndefined();
 
-    const basic = make({ playback: 'none', emotionMode: 'basic', speed: 1.4 });
+    const basic = make({
+      playback: 'none',
+      model: 'ming3-tts',
+      modelStyles: { 'ming3-tts': style({ emotionMode: 'basic', speed: 1.4 }) },
+    });
     await started(basic);
     await toolOf(basic, 'voice_speak').handler({ text: '丙' }, {} as ToolCallContext);
     expect(basic.service.calls[0]?.speed).toBe(1.4);
@@ -343,9 +333,39 @@ describe('Voice World', () => {
     expect(basic.service.calls[0]?.instruct).toBeUndefined();
   });
 
+  it('未知模型按 OpenAI 兼容处理,categorical 不发 emotion', async () => {
+    const h = make({
+      playback: 'none',
+      model: 'qwen-tts',
+      modelStyles: { 'qwen-tts': style({ emotionMode: 'categorical', defaultEmotion: '开心' }) },
+    });
+    await started(h);
+    await toolOf(h, 'voice_speak').handler({ text: '你好', emotion: '温柔' }, {} as ToolCallContext);
+    expect(h.service.calls[0]?.emotion).toBeUndefined();
+    expect(h.service.calls[0]?.instruct).toBeUndefined();
+    expect(h.service.calls[0]?.speed).toBeUndefined();
+  });
+
+  it('IndexTTS2 的 basic 模式不发独立 speed,与提示词一致', async () => {
+    const h = make({
+      playback: 'none',
+      model: 'index-tts2',
+      modelStyles: { 'index-tts2': style({ emotionMode: 'basic', speed: 0.7 }) },
+    });
+    await started(h);
+    await toolOf(h, 'voice_speak').handler({ text: '你好' }, {} as ToolCallContext);
+    expect(h.service.calls[0]?.speed).toBeUndefined();
+    expect(h.service.calls[0]?.emotion).toBeUndefined();
+    expect(h.service.calls[0]?.instruct).toBeUndefined();
+  });
+
   it('tags / none 模式不发风格参数', async () => {
     for (const emotionMode of ['tags', 'none'] as const) {
-      const h = make({ playback: 'none', emotionMode, defaultEmotion: '开心', speed: 1.3 });
+      const h = make({
+        playback: 'none',
+        model: 'ming3-tts',
+        modelStyles: { 'ming3-tts': style({ emotionMode, defaultEmotion: '开心', speed: 1.3 }) },
+      });
       await started(h);
       await toolOf(h, 'voice_speak').handler({ text: '你好' }, {} as ToolCallContext);
       expect(h.service.calls[0]?.emotion).toBeUndefined();

@@ -4,6 +4,7 @@
  */
 
 import type { WebUiClientBundle, WebUiPanelContext } from 'cortico/web/shared/client-panel.ts';
+import { modelEmotionModes, voicePrompt } from '../src/models.ts';
 import type { PanelModelSave, PanelModelState } from '../src/panel.ts';
 import type { ModelParameter, VoiceModelStyle } from '../src/types.ts';
 import { PARAM_LABELS, panelText, type PanelText } from './strings.ts';
@@ -137,13 +138,19 @@ function styleField(
 function makeStyleFields(
   ctx: WebUiPanelContext,
   t: PanelText,
+  selectedModel: string,
   style: VoiceModelStyle,
+  onChange: () => void,
 ): StyleFields {
   const ui = ctx.ui;
   const grid = ui.h('div', 'vx-params');
 
+  // 当前模型落不到的方式不列出来;已保存的旧值仍保留,免得一打开就被改掉。
+  const modes = modelEmotionModes(selectedModel);
   const emotionMode = ui.select({
-    options: t.emotionModeOptions.map(({ value, label }) => ({ value, label })),
+    options: t.emotionModeOptions
+      .filter(({ value }) => (modes as readonly string[]).includes(value) || value === style.emotionMode)
+      .map(({ value, label }) => ({ value, label })),
     value: style.emotionMode,
   });
   const defaultEmotion = ui.input({ type: 'text', value: style.defaultEmotion });
@@ -156,6 +163,19 @@ function makeStyleFields(
     options: t.paralinguisticOptions.map(({ value, label }) => ({ value, label })),
     value: style.paralinguistic,
   });
+
+  // 当前控制方式不会发送的字段置灰,免得填了却不生效。
+  const speedSupported = modes.includes('basic');
+  const syncEnabled = (): void => {
+    const mode = emotionMode.value;
+    defaultEmotion.disabled = mode === 'basic' || mode === 'tags' || mode === 'none';
+    defaultInstruct.disabled = mode !== 'instruct';
+    speed.disabled = !speedSupported || mode === 'categorical' || mode === 'tags' || mode === 'none';
+  };
+  // 这两个开关决定 voice_speak 允许填哪些字段;改动后提示词立即重算。
+  emotionMode.addEventListener('change', () => { syncEnabled(); onChange(); });
+  paralinguistic.addEventListener('change', onChange);
+  syncEnabled();
 
   grid.append(
     styleField(ctx, t.emotionMode, emotionMode),
@@ -212,7 +232,7 @@ function mountModel(ctx: WebUiPanelContext): void {
   sheet.body.append(top, styleSection, styleHost, paramsSection, params, actions, msg);
   ctx.root.append(sheet.el);
 
-  const prompt = ui.foldSheet('voice-model-prompt', { title: t.promptTitle, defaultOpen: false });
+  const prompt = ui.foldSheet('voice-model-prompt', { title: t.promptTitle, defaultOpen: true });
   const promptText = ui.h('pre', 'vx-prompt');
   prompt.body.append(promptText);
   ctx.root.append(prompt.el);
@@ -263,7 +283,7 @@ function mountModel(ctx: WebUiPanelContext): void {
   }
 
   function renderStyle(): void {
-    styleFields = makeStyleFields(ctx, t, styleOf(selected));
+    styleFields = makeStyleFields(ctx, t, selected, styleOf(selected), () => renderPrompt());
     styleHost.replaceChildren(styleFields.el);
   }
 
@@ -282,9 +302,7 @@ function mountModel(ctx: WebUiPanelContext): void {
   }
 
   function renderPrompt(): void {
-    const text = latest?.prompts?.[selected]
-      ?? (latest?.model === selected ? latest.prompt : '');
-    promptText.textContent = text;
+    promptText.textContent = voicePrompt(selected, currentStyle());
     prompt.note.textContent = selected || '—';
   }
 

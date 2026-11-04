@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { modelPrompt } from '../src/models.ts';
 import type { PanelModelState } from '../src/panel.ts';
 import { testWorld, type TestWorldHandle } from './helpers/voice.ts';
 
@@ -39,7 +38,6 @@ describe('模型面板', () => {
     expect(first).toMatchObject({
       model: '',
       voice: '',
-      prompt: modelPrompt(''),
       options: {},
       style: {
         voice: '',
@@ -50,7 +48,6 @@ describe('模型面板', () => {
         paralinguistic: 'auto',
       },
       models: h.service.modelList,
-      prompts: { 'ming3-tts': modelPrompt('ming3-tts') },
       settings: {
         'ming3-tts': {
           voice: '',
@@ -92,8 +89,6 @@ describe('模型面板', () => {
     });
     expect(saved.model).toBe('index-tts2');
     expect(saved.voice).toBe('4016');
-    expect(saved.prompt).toBe(modelPrompt('index-tts2'));
-    expect(saved.prompt).toContain('emotion_text');
     expect(saved.options).toEqual({ emotion_alpha: 1.2, use_emotion_text: true });
   });
 

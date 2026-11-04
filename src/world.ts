@@ -1,9 +1,9 @@
 /**
- * 语音 World:把回复念出来。
+ * 语音 World:把文字念出来。
  *
- * 触发层从主 session 输出流与事件库认出要念的话;文本层过滤与切句;
- * 合成层经 HTTP 调 Kmch AI · 服务;出口层本机播放、发事件或只返回附件。
- * 这一层不解析任何 TTS 方言,也不监听端口。
+ * 只有 voice_speak 被调用时才合成;文本层过滤与切句,合成层经 HTTP 调
+ * Kmch AI · 服务,出口层本机播放、发事件或只返回附件。这一层不解析任何
+ * TTS 方言,也不监听端口;是否发语音由 bot 决定。
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -18,13 +18,13 @@ import { modelStyle, styledConfig, VOICE_DEFAULTS, VOICE_ID, voiceConfigGroups, 
 import type { AudioPlayer } from './audio/player.ts';
 import { createPlayer } from './audio/player.ts';
 import { SpeechQueue, type SpeechJob } from './audio/queue.ts';
-import { modelPrompt } from './models.ts';
+import { modelSupportsEmotion, modelSupportsSpeed, modelSupportsTags, voicePrompt } from './models.ts';
 import { isPlainObject, type PanelModelSetting, type PanelModelState } from './panel.ts';
 import { ServiceClient, type SpeechService } from './service.ts';
 import { splitSpeech, truncateSpeech } from './speech/chunk.ts';
-import { buildInstruct, resolveStyle } from './speech/style.ts';
+import { buildInstruct, describeStyle, resolveStyle } from './speech/style.ts';
+import { keepsParalinguistic } from './speech/tags.ts';
 import { filterSpeech } from './speech/text.ts';
-import { hasKeyword, latestUserText, VoiceTap } from './triggers.ts';
 import { VOICE_TOOL_DECLS } from './tools.ts';
 import type {
   EmotionMode, ParalinguisticMode, ServiceHealth, TtsAudio, TtsRequest, VoiceConfigSection,
@@ -32,7 +32,6 @@ import type {
 } from './types.ts';
 
 const ENV_PROMPT_FILE = fileURLToPath(new URL('./ENV_PROMPT.md', import.meta.url));
-const DEDUPE_WINDOW_MS = 5000;
 const HEALTH_INTERVAL_MS = 15_000;
 const HEALTH_TTL_MS = 15_000;
 
@@ -62,7 +61,6 @@ interface EnqueueOptions {
   instruct?: string;
   voice?: string;
   speed?: number;
-  silent?: boolean;
 }
 
 interface ServiceState {
@@ -119,7 +117,6 @@ export class VoiceWorld implements World {
   private readonly deps: VoiceWorldDeps;
   private readonly player: AudioPlayer | null;
   private readonly queue: SpeechQueue;
-  private readonly tap: VoiceTap;
   private readonly service: SpeechService;
   private host: WorldHost | null = null;
   private healthTimer: NodeJS.Timeout | null = null;
@@ -131,7 +128,6 @@ export class VoiceWorld implements World {
   private catalog: VoiceModel[] | null = null;
   private catalogError: string | undefined;
   private catalogLoad: Promise<void> | null = null;
-  private readonly lastSpoken = new Map<string, number>();
   private lastFailureAt = 0;
 
   constructor(private readonly opts: VoiceWorldOptions) {
@@ -153,10 +149,6 @@ export class VoiceWorld implements World {
       emit: (audio, job, chunk) => this.emitVoice(audio, job, chunk),
       onError: (job, message) => { void this.pushFailure(message, { source: job.source }); },
     });
-    this.tap = new VoiceTap({
-      onText: (text, source) => this.consider(text, source),
-      onAbort: () => this.queue.hush(),
-    });
   }
 
   private get cfg(): VoiceConfigSection {
@@ -169,12 +161,18 @@ export class VoiceWorld implements World {
   }
 
   envPromptVars(): Record<string, string> {
-    const cfg = this.styled;
+    const style = modelStyle(this.cfg, this.cfg.model);
+    const tagsKept = keepsParalinguistic(style.paralinguistic, modelSupportsTags(this.cfg.model));
     return {
-      'voice.voice': cfg.voice || 'default',
-      'voice.emotion': cfg.defaultEmotion || 'neutral',
-      'voice.instruct': cfg.defaultInstruct || 'none',
-      'voice.modelPrompt': modelPrompt(this.cfg.model),
+      'voice.voice': style.voice || 'default',
+      'voice.style': describeStyle(
+        style,
+        tagsKept,
+        modelSupportsSpeed(this.cfg.model),
+        modelSupportsTags(this.cfg.model),
+        modelSupportsEmotion(this.cfg.model),
+      ),
+      'voice.modelPrompt': voicePrompt(this.cfg.model, style),
     };
   }
 
@@ -190,7 +188,6 @@ export class VoiceWorld implements World {
         this.queue.hush();
         return 'Voice stopped; queued lines were dropped.';
       }),
-      tool('voice_style', (args) => this.handleStyle(args)),
     ];
   }
 
@@ -243,9 +240,8 @@ export class VoiceWorld implements World {
         role: 'envPrompt',
         vars: [
           { name: 'voice.voice', description: 'Current voice id.' },
-          { name: 'voice.emotion', description: 'Standing emotion.' },
-          { name: 'voice.instruct', description: 'Standing direction.' },
-          { name: 'voice.modelPrompt', description: 'How to write text and emotion for the current model.' },
+          { name: 'voice.style', description: 'Standing style under the current emotion control mode.' },
+          { name: 'voice.modelPrompt', description: 'Which voice_speak fields the current model and settings allow.' },
         ],
       }],
     };
@@ -276,8 +272,6 @@ export class VoiceWorld implements World {
     return {
       model: cfg.model,
       voice: style.voice,
-      prompt: modelPrompt(cfg.model),
-      prompts: Object.fromEntries(Object.keys(settings).map((id) => [id, modelPrompt(id)])),
       options: current?.options ?? {},
       style,
       models: this.catalog ?? [],
@@ -416,18 +410,12 @@ export class VoiceWorld implements World {
     };
   }
 
-  outputTap() {
-    // 概率触发已删除;旁路只用于显式关键词与 <tts> 的判定。
-    return this.tap;
-  }
-
   async start(host: WorldHost): Promise<void> {
     this.host = host;
     this.started = true;
     this.log.info('语音 World 启动', {
       service: serviceHost(this.cfg.serviceUrl),
       playback: this.cfg.playback,
-      explicit: this.cfg.explicitTrigger,
     });
     if (this.cfg.playback === 'local') {
       void this.player?.warm(this.ensureTempDir()).catch((error: unknown) => {
@@ -452,37 +440,7 @@ export class VoiceWorld implements World {
     this.log.info('语音 World 停止');
   }
 
-  // ———————— 触发 ————————
-
-  /** 同一段文字在去重窗口内只处理一次。 */
-  private fresh(text: string): boolean {
-    const key = text.toLowerCase().replace(/\s+/g, '');
-    const now = this.deps.now();
-    for (const [seen, at] of this.lastSpoken) if (now - at > DEDUPE_WINDOW_MS) this.lastSpoken.delete(seen);
-    if (this.lastSpoken.has(key)) return false;
-    this.lastSpoken.set(key, now);
-    return true;
-  }
-
-  private consider(raw: string, source: string): void {
-    if (!this.started) return;
-    const cfg = this.cfg;
-    const filtered = filterSpeech(raw, this.styled);
-    if (!filtered.text) return;
-
-    const userText = cfg.explicitTrigger
-      ? latestUserText(this.host!, cfg.explicitWindowSec, this.deps.now())
-      : '';
-    const explicit = filtered.forced || (cfg.explicitTrigger && hasKeyword(userText, cfg.explicitKeywords));
-    if (!explicit) return;
-    if (!this.fresh(filtered.text)) return;
-
-    this.enqueue(filtered.text, {
-      source,
-      ...(filtered.emotion ? { emotion: filtered.emotion } : {}),
-    });
-    this.log.debug('显式朗读', { source, chars: [...filtered.text].length });
-  }
+  // ———————— 排队 ————————
 
   private enqueue(text: string, opts: EnqueueOptions): ReturnType<SpeechQueue['enqueue']> | null {
     const cfg = this.cfg;
@@ -493,7 +451,7 @@ export class VoiceWorld implements World {
     const job: SpeechJob = {
       text: clipped,
       chunks,
-      silent: opts.silent === true || cfg.playback === 'none',
+      silent: cfg.playback === 'none',
       source: opts.source,
       produce: (chunk, signal) => this.synthesize(chunk, {
         ...(opts.emotion ? { emotion: opts.emotion } : {}),
@@ -557,50 +515,6 @@ export class VoiceWorld implements World {
     return this.spokenOutcome(undefined, 0, false);
   }
 
-  private async handleStyle(args: Record<string, unknown>): Promise<ToolOutcome> {
-    const has = (key: string): boolean => Object.prototype.hasOwnProperty.call(args, key);
-    const model = this.cfg.model.trim();
-    if (!model) {
-      // 还没选模型时写到全局回落值;模型页仍可之后覆盖。
-      const patch: Partial<VoiceConfigSection> = {};
-      if (has('emotion')) patch.defaultEmotion = asString(args.emotion).slice(0, 40);
-      if (has('instruct')) patch.defaultInstruct = asString(args.instruct).slice(0, 500);
-      if (has('voice')) patch.voice = asString(args.voice).slice(0, 200);
-      if (has('speed')) {
-        const speed = asNumber(args.speed);
-        if (speed !== undefined) patch.speed = Math.min(2, Math.max(0.5, speed));
-      }
-      if (Object.keys(patch).length > 0) {
-        this.opts.persist(patch);
-        return { text: `Voice style updated. ${this.styleSummary()}` };
-      }
-      return { text: this.styleSummary() };
-    }
-
-    const current = modelStyle(this.cfg, model);
-    const next: VoiceModelStyle = { ...current };
-    if (has('emotion')) next.defaultEmotion = asString(args.emotion).slice(0, 40);
-    if (has('instruct')) next.defaultInstruct = asString(args.instruct).slice(0, 500);
-    if (has('voice')) next.voice = asString(args.voice).slice(0, 200);
-    if (has('speed')) {
-      const speed = asNumber(args.speed);
-      if (speed !== undefined) next.speed = Math.min(2, Math.max(0.5, speed));
-    }
-    if (Object.keys(next).some((key) => next[key as keyof VoiceModelStyle] !== current[key as keyof VoiceModelStyle])) {
-      const modelStyles: VoiceConfigSection['modelStyles'] = { ...(this.cfg.modelStyles ?? {}), [model]: next };
-      this.cfg.modelStyles = modelStyles;
-      this.opts.persist({ modelStyles });
-      return { text: `Voice style updated. ${this.styleSummary()}` };
-    }
-    return { text: this.styleSummary() };
-  }
-
-  private styleSummary(): string {
-    const cfg = this.styled;
-    return `Voice: ${cfg.voice || 'default'}; emotion: ${cfg.defaultEmotion || 'neutral'}; `
-      + `direction: ${cfg.defaultInstruct || 'none'}; speed: ${cfg.speed}.`;
-  }
-
   private spokenOutcome(audio: TtsAudio | undefined, seconds: number, silent: boolean): ToolOutcome {
     const duration = seconds > 0.05 ? ` (${seconds.toFixed(1)} s)` : '';
     const text = silent
@@ -647,10 +561,12 @@ export class VoiceWorld implements World {
         break;
       }
       case 'categorical':
-        request.emotion = resolved.emotion || '平静';
+        // 服务 profile 没有 emotion 字段时不发,避免提示词与实际请求不一致。
+        if (modelSupportsEmotion(cfg.model)) request.emotion = resolved.emotion || '平静';
         break;
       case 'basic':
-        request.speed = resolved.speed;
+        // 模型 profile 不接收独立 speed 时不发,保持与提示词一致。
+        if (modelSupportsSpeed(cfg.model)) request.speed = resolved.speed;
         break;
       default:
         break;

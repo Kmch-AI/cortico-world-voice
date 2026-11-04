@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "voice_speak",
-      "description": "Say a line aloud in your voice through the person's speakers, or only synthesize it when silent is true. Use it when the person asks for voice. Fill only the fields allowed by the current model guidance in the environment prompt. It only makes sound; the visible reply still goes through the channel's own send tool. When the speech service supports paralinguistic tags, keep them inline in the text: [Laughter], [Sigh], [Breathing], [Uhm], [Question-ei] and the like are performed, not read out.",
+      "description": "Say a line aloud in your voice through the person's speakers, or only synthesize it when silent is true. Nothing is spoken automatically: this tool is the only way to make sound. Use it when you decide a reply should be spoken, or when the person asks for voice. Fill only the fields allowed by the current model guidance in the environment prompt. It only makes sound; the visible reply still goes through the channel's own send tool. When the current settings allow paralinguistic tags, keep them inline in the text: [Laughter], [Sigh], [Breathing], [Uhm], [Question-ei] and the like are performed, not read out.",
       "parameters": {
         "type": "object",
         "additionalProperties": false,
@@ -15,12 +15,12 @@
           "emotion": {
             "type": "string",
             "maxLength": 40,
-            "description": "Emotion for this line when the current model guidance allows it, for example 开心、温柔、疲惫. IndexTTS2 uses instruct instead. Omit to use the standing style."
+            "description": "Emotion for this line when the current emotion control sends emotion, for example 开心、温柔、疲惫. Omit to use the standing emotion."
           },
           "instruct": {
             "type": "string",
             "maxLength": 500,
-            "description": "Natural-language direction for this line, for example \"像在耳边轻声说话，语速偏慢\". Preferred for IndexTTS2. Omit to use the standing style."
+            "description": "Natural-language direction for this line when the current emotion control sends instruct, for example \"像在耳边轻声说话，语速偏慢\". Omit to use the standing direction."
           },
           "voice": {
             "type": "string",
@@ -31,7 +31,7 @@
             "type": "number",
             "minimum": 0.5,
             "maximum": 2,
-            "description": "Speed multiplier for this line; 1 is normal."
+            "description": "Speed multiplier for this line; 1 is normal. Only used when the current emotion control sends speed or folds it into instruct."
           },
           "silent": {
             "type": "boolean",
@@ -65,44 +65,6 @@
         "zh": "立刻停声并清空排队。",
         "en": "Stop the voice and drop queued lines."
       }
-    },
-    {
-      "name": "voice_style",
-      "description": "Read or change the standing defaults used by later voice lines. Do not use it for a single line; only when the person asks for a lasting change. Call with values to change them; call with no arguments to read the current style. Changes are saved to the World configuration and apply to later lines.",
-      "parameters": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "emotion": {
-            "type": "string",
-            "maxLength": 40,
-            "description": "Standing emotion; an empty string clears it."
-          },
-          "instruct": {
-            "type": "string",
-            "maxLength": 500,
-            "description": "Standing natural-language direction; an empty string clears it."
-          },
-          "voice": {
-            "type": "string",
-            "maxLength": 200,
-            "description": "Standing voice id."
-          },
-          "speed": {
-            "type": "number",
-            "minimum": 0.5,
-            "maximum": 2,
-            "description": "Standing speed multiplier."
-          }
-        }
-      },
-      "tags": [
-        "write"
-      ],
-      "summary": {
-        "zh": "读或改后续语音的长期默认风格;不用于单句。",
-        "en": "Read or change the standing defaults for later voice lines; not for a single line."
-      }
     }
   ],
   "events": [
@@ -126,7 +88,7 @@
       "key": "worlds.voice.envPrompt",
       "title": "语音 · 环境提示词",
       "role": "envPrompt",
-      "content": "语音由 Voice 提供:它只把文字变成声音,从对方的扬声器念出来,不负责把回复发到聊天渠道;可见的回复仍然走渠道自己的发送工具。\n\n当前默认音色是 {{voice.voice}},情绪是 {{voice.emotion}},指令是 {{voice.instruct}}。普通回复不会自己出声,需要语音时明确调用 voice_speak。\n\n需要出声的时候:\n- 对方明确要语音、要你念出来、要听你的声音时,调用 voice_speak,把要念的正文放进 text。\n- 这一句需要特定语气时,按下面的模型写法填 voice_speak 的参数;只填当前模型允许的字段。\n- 某一句只用于别的渠道(例如语音条),不要在本机播放:voice_speak 带 silent: true,音频随回执交给渠道。\n- 对方让你安静、停下时调用 voice_hush。\n\n文本规则:\n- text 只放真正要念的正文,不要放动作描写、Markdown、代码、网址或解释。\n- {{voice.modelPrompt}}\n- 不要把控制标记写进可见的回复正文;语音参数只放在工具调用里。\n"
+      "content": "语音由 Voice 提供:它只把文字变成声音,从对方的扬声器念出来,不负责把回复发到聊天渠道;可见的回复仍然走渠道自己的发送工具。\n\n只有调用 voice_speak 才会出声,普通回复不会自动朗读;是否发语音由你按当前场合决定。当前音色是 {{voice.voice}};{{voice.style}}。\n\n需要出声的时候:\n- 对方明确要语音、要你念出来、要听你的声音,或你判断这句该出声时,调用 voice_speak,把要念的正文放进 text。\n- 这一句需要特定语气时,按下面的模型写法填 voice_speak 的参数;只填当前设置允许的字段。\n- 某一句只用于别的渠道(例如语音条),不要在本机播放:voice_speak 带 silent: true,音频随回执交给渠道。\n- 对方让你安静、停下时调用 voice_hush。\n\n文本规则:\n- text 只放真正要念的正文,不要放动作描写、Markdown、代码、网址或解释。\n- {{voice.modelPrompt}}\n- 不要把控制标记写进可见的回复正文;语音参数只放在工具调用里。\n"
     }
   ]
 }

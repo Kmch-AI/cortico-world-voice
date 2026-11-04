@@ -1,3 +1,16 @@
+## 0.5.0
+
+- 删除触发层：不再实现 `outputTap`，不再匹配用户消息关键词，不再识别正文里的 `<tts>…</tts>`；移除 `explicitTrigger` / `explicitKeywords` / `explicitWindowSec`。是否发语音由 bot / Persona 决定，Voice 只在 `voice_speak` 被调用时出声。
+- 删除 `voice_style` 工具；长期风格只在「模型」页按模型保存，工具只剩 `voice_speak` 与 `voice_hush`。
+- 模型提示词改为按「模型能力 × 情绪控制方式 × 副语言标签策略」生成：`instruct` 要求填 `instruct`，`categorical` 要求填 `emotion`，`basic` 要求填 `speed`，`tags` / `none` 要求不填情绪字段；标签保留时列出可用标签，删除或模型不支持时明确禁止。面板切换这两个开关时提示词立即重算，环境提示词使用同一份片段。
+- IndexTTS2 的独立 `speed` 不落到模型，模型页不再提供「语速」方式；已保存的旧值仍显示，提示词会说明它不生效，合成时也不再发这个字段。
+- 未知模型按 OpenAI 兼容处理：服务 profile 没有 `emotion` 字段，模型页不再提供「情绪标签」方式，合成也不发 `emotion`，提示词改为按默认语气朗读。
+- `paralinguistic: keep` 对不支持的模型会强制保留标签；提示词不再承诺会被演出来，而是警告可能被念出字面。
+- 环境提示词变量 `voice.emotion` / `voice.instruct` 合并为 `voice.style`，只描述当前情绪控制方式实际会用到的默认值。
+- System 配置页删除「触发」组；`minChars` / `maxChars` 归入「文本过滤」组。
+- 文本过滤不再提取 `<tts>`；短文本与长度截断仍按 `minChars` / `maxChars`。
+- 这是破坏性变更：升级后关键词与 `<tts>` 不再触发朗读，`voice_style` 调用会失败。
+
 ## 0.4.3
 
 - 扩展介绍统一为中文的「定位 + 能力 + 边界」格式；npm `description`、市场中文介绍与 README 首段同步。

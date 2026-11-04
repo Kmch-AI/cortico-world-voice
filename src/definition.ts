@@ -19,7 +19,6 @@ export const VOICE: WorldDefinition<VoiceConfigSection> = {
     tools: describeTools(VOICE_TOOL_DECLS, {
       voice_speak: { zh: '现在念一句;可指定情绪、表演指令、音色与语速,也可以只合成不出声。', en: 'Say one line now, optionally with an emotion, direction, voice and speed, or synthesize it silently.' },
       voice_hush: { zh: '立刻停声并清空排队。', en: 'Stop the voice and drop queued lines.' },
-      voice_style: { zh: '读或改后续语音的长期默认风格;不用于单句。', en: 'Read or change the standing defaults for later voice lines; not for a single line.' },
     }),
     events: [
       {

@@ -45,15 +45,9 @@ export interface VoiceConfigSection {
   speed: number;
   paralinguistic: ParalinguisticMode;
 
-  // 触发
-  explicitTrigger: boolean;
-  explicitKeywords: string;
-  /** 往回看多少秒内的用户消息算「刚才」。 */
-  explicitWindowSec: number;
+  // 过滤与长度
   minChars: number;
   maxChars: number;
-
-  // 过滤
   filterCode: boolean;
   filterUrls: boolean;
   filterMarkdown: boolean;

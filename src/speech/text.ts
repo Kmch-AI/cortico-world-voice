@@ -1,4 +1,4 @@
-/** 把一段回复变成能念的正文:取 `<tts>`、去代码/网址/Markdown/动作标记/符号。 */
+/** 把一段回复变成能念的正文:去代码/网址/Markdown/动作标记/符号。 */
 import { modelSupportsTags } from '../models.ts';
 import type { VoiceConfigSection } from '../types.ts';
 import {
@@ -12,13 +12,10 @@ import {
 export interface FilteredSpeech {
   /** 过滤后的朗读文本;空串表示没有可念的内容。 */
   text: string;
-  /** 原文用 `<tts>` 指定了要念的段落;这种请求直接朗读。 */
-  forced: boolean;
   /** 文本里的情绪标记;没有时为空。 */
   emotion: string;
 }
 
-const TTS_TAG_RE = /<tts>([\s\S]*?)<\/tts>/gi;
 const FENCED_CODE_RE = /```[\s\S]*?```|~~~[\s\S]*?~~~/g;
 const INLINE_CODE_RE = /`[^`\n]*`/g;
 const IMAGE_RE = /!\[[^\]]*\]\([^)]*\)/g;
@@ -33,15 +30,6 @@ const LIST_MARK_RE = /^[ \t]*(?:[-*+•]|\d+[.)])[ \t]+/gm;
 const HEADING_RE = /^[ \t]*#{1,6}[ \t]+/gm;
 const QUOTE_RE = /^[ \t]*>[ \t]?/gm;
 const EMPHASIS_RE = /[*_~]{1,3}/g;
-
-/** `<tts>…</tts>` 里的内容才是要念的;没有这个标签时返回原文。 */
-export function extractTtsMarkup(raw: string): { text: string; forced: boolean } {
-  const parts: string[] = [];
-  TTS_TAG_RE.lastIndex = 0;
-  for (const m of raw.matchAll(TTS_TAG_RE)) parts.push(m[1] ?? '');
-  if (parts.length === 0) return { text: raw, forced: false };
-  return { text: parts.join(' '), forced: true };
-}
 
 function symbolList(raw: string): string[] {
   return raw
@@ -60,10 +48,9 @@ function collapse(text: string): string {
 
 /** 过滤一段文本。配置每次现读,所以热改立即生效。 */
 export function filterSpeech(raw: string, cfg: VoiceConfigSection): FilteredSpeech {
-  if (typeof raw !== 'string' || !raw) return { text: '', forced: false, emotion: '' };
+  if (typeof raw !== 'string' || !raw) return { text: '', emotion: '' };
 
-  const markup = extractTtsMarkup(raw);
-  const emotion = takeEmotionMarker(markup.text);
+  const emotion = takeEmotionMarker(raw);
   let text = emotion.text;
 
   if (cfg.filterCode) {
@@ -100,5 +87,5 @@ export function filterSpeech(raw: string, cfg: VoiceConfigSection): FilteredSpee
   text = collapse(text);
   // 只剩标点或控制字符的内容不念。
   if (!/[\p{L}\p{N}]/u.test(text)) text = '';
-  return { text, forced: markup.forced, emotion: emotion.emotion };
+  return { text, emotion: emotion.emotion };
 }

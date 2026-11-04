@@ -16,10 +16,6 @@ export interface PanelModelState {
   model: string;
   /** 当前模型的音色。 */
   voice: string;
-  /** 当前模型的环境提示词片段,来自 `models.ts`。 */
-  prompt: string;
-  /** 每个模型的环境提示词片段,切换模型时立即更新。 */
-  prompts: Record<string, string>;
   /** 当前模型已保存的请求参数。 */
   options: Record<string, unknown>;
   /** 当前模型生效的朗读风格;没有专属设置时回落到全局值。 */

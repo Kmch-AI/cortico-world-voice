@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { VOICE_DEFAULTS } from '../src/config.ts';
 import { splitSpeech, truncateSpeech } from '../src/speech/chunk.ts';
-import { buildInstruct, classifySpeed, resolveStyle } from '../src/speech/style.ts';
+import { buildInstruct, classifySpeed, describeStyle, resolveStyle } from '../src/speech/style.ts';
+import type { VoiceModelStyle } from '../src/types.ts';
 import {
   canonicalizeTags, hasParalinguisticTag, keepsParalinguistic, stripUnknownTags, tagsIn, takeEmotionMarker,
 } from '../src/speech/tags.ts';
@@ -14,12 +15,6 @@ describe('filterSpeech', () => {
     const raw = '## 标题\n**你好**，看这里：https://example.com/x 还有 `code`。\n```js\nconst a = 1;\n```\n【笑】〈动作〉接着说。';
     const out = filterSpeech(raw, cfg());
     expect(out.text).toBe('标题 你好，看这里： 还有。 接着说。');
-  });
-
-  it('取 <tts> 内文并标记为强制', () => {
-    const out = filterSpeech('前半句<tts>只念这里</tts>后半句', cfg());
-    expect(out.text).toBe('只念这里');
-    expect(out.forced).toBe(true);
   });
 
   it('情绪标记从朗读文本里删掉', () => {
@@ -124,5 +119,22 @@ describe('style', () => {
     expect(classifySpeed(0.7)).toBe('慢速');
     expect(classifySpeed(1)).toBe('中速');
     expect(classifySpeed(1.4)).toBe('快速');
+  });
+
+  it('环境提示词只描述当前方式会用到的默认值', () => {
+    const style: VoiceModelStyle = {
+      voice: '', emotionMode: 'tags', defaultEmotion: '开心', defaultInstruct: '轻柔', speed: 1, paralinguistic: 'auto',
+    };
+    expect(describeStyle(style, true)).toBe('情绪只用正文里的副语言标签表达');
+    expect(describeStyle(style, false)).toBe('情绪不发送,正文标签也会被删掉');
+    expect(describeStyle(style, true, true, false)).toBe('情绪只靠正文标签,但模型不支持,可能被念出字面');
+    expect(describeStyle({ ...style, emotionMode: 'categorical' }, true, true, true, false))
+      .toBe('当前模型不发送情绪参数');
+    expect(describeStyle({ ...style, emotionMode: 'categorical' }, false))
+      .toBe('情绪用短标签控制,默认情绪是开心');
+    expect(describeStyle({ ...style, emotionMode: 'basic' }, false))
+      .toBe('情绪控制只发语速,默认原速');
+    expect(describeStyle({ ...style, emotionMode: 'basic' }, false, false))
+      .toBe('当前模型不支持独立语速,不发送情绪参数');
   });
 });
