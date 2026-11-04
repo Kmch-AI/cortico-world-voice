@@ -18,14 +18,14 @@ interface ModelInfo {
 }
 
 const MING3: ModelInfo = {
-  match: ['ming3', 'ming-3', 'ming_3'],
-  label: 'Ming 3.0',
+  match: ['ming3-tts', 'ming-3', 'ming_3'],
+  label: 'Ming 3.0 TTS',
   tags: true,
   prompt: '调用 voice_speak 时可用 instruct 描述表演方式,emotion 传情绪,voice 与 speed 也可选;支持 [Laughter] [Sigh] [Breathing] [Uhm] [Question-ei] 等副语言标签.',
 };
 
 const INDEXTTS2: ModelInfo = {
-  match: ['index-tts2', 'index_tts2', 'index-tts2.5', 'index_tts2_5', '2.5'],
+  match: ['index-tts2', 'index_tts2', 'index-tts2.5', 'index_tts2_5'],
   label: 'IndexTTS2',
   tags: false,
   prompt: '调用 voice_speak 时只填 text 与 instruct;不要填 emotion、voice、speed。instruct 用自然语言描述表演方式,例如「用轻快、带笑意的语气」,服务会把它写入 emotion_text。不要在正文写 emotion_text 或 [Laughter] 这类方括号标签。采样/时长参数在语音模型页配置,不要写进正文。需要把音频交给其他渠道时才填 silent。',

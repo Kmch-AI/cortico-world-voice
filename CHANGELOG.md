@@ -2,6 +2,7 @@
 
 - 扩展介绍统一为中文的「定位 + 能力 + 边界」格式；npm `description`、市场中文介绍与 README 首段同步。
 - 标签按功能收紧：去掉 `local`。语音的合成在服务端完成，本包只做触发、过滤、队列与播放；保留 `voice`、`external-setup`、`requires-extension`、`experimental`。
+- 模型匹配收紧：裸 `ming3` 不再认作 Ming 3.0，必须带 `-tts` 或写成 `ming-3` / `ming_3`；去掉 IndexTTS2 的裸 `2.5` 匹配，避免无关模型名误判。Ming 3.0 的显示名改为 `Ming 3.0 TTS`。
 
 ## 0.4.2
 
